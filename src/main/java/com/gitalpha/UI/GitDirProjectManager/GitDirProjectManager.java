@@ -18,10 +18,10 @@ public class GitDirProjectManager extends StackPane
 		GitDirTarget = _GitDir;
 
 		// Create grid layout
-		BranchWidgetInstance = new BranchWidget(GitDirTarget);
-		ChangesWidgetInstance = new ChangesWidget(this, GitDirTarget);
-		CommitWidgetInstance = new CommitWidget(GitDirTarget);
-		TextViewerWidgetInstance = new TextViewerWidget(GitDirTarget); // TODO: Pass the selected FileChanges when implemented
+		BranchWidgetInstance = new BranchWidget(GitDirTarget, this);
+		ChangesWidgetInstance = new ChangesWidget(GitDirTarget, this);
+		CommitWidgetInstance = new CommitWidget(GitDirTarget, this);
+		TextViewerWidgetInstance = new TextViewerWidget(GitDirTarget, this); // TODO: Pass the selected FileChanges when implemented
 
 		var __GridLayout = new GridPane();
 
@@ -45,10 +45,7 @@ public class GitDirProjectManager extends StackPane
 
 		getChildren().add(__GridLayout);
 
-		GitDirTarget.Refresh().thenRun(() ->
-		{
-			ChangesWidgetInstance.updateChanges();
-		});
+		RefreshGitDirProjectManager();
 	}
 
 	public final GitDirTabButton TabButton;
@@ -62,5 +59,14 @@ public class GitDirProjectManager extends StackPane
 	public void ReadFileChanges(FileChanges _FileChanges)
 	{
 		TextViewerWidgetInstance.SetFileChanges(_FileChanges);
+	}
+
+	public void RefreshGitDirProjectManager()
+	{
+		GitDirTarget.Refresh().thenRun(() ->
+		{
+			ChangesWidgetInstance.updateChanges();
+			BranchWidgetInstance.updateBranchList();
+		});
 	}
 }

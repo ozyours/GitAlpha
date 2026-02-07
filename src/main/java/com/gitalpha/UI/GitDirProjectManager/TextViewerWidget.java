@@ -5,16 +5,15 @@ import com.gitalpha.Type.FileChanges;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.StackPane;
 
-public class TextViewerWidget extends StackPane
+public class TextViewerWidget extends BaseWidget
 {
-	final private GitDir GitDirTarget;
 	final private TextArea TextAreaTarget;
 
 	private FileChanges FileChangesTarget = null;
 
-	public TextViewerWidget(GitDir _GitDirTarget)
+	public TextViewerWidget(GitDir _GitDirTarget, GitDirProjectManager _GitDirProjectManagerTarget)
 	{
-		GitDirTarget = _GitDirTarget;
+		super(_GitDirTarget, _GitDirProjectManagerTarget);
 
 		TextAreaTarget = new TextArea();
 		TextAreaTarget.setEditable(false);
@@ -35,8 +34,10 @@ public class TextViewerWidget extends StackPane
 			{
 				Integer o = e.oldLineNumber();
 				Integer n = e.newLineNumber();
-				if (o != null) maxNum = Math.max(maxNum, o);
-				if (n != null) maxNum = Math.max(maxNum, n);
+				if (o != null)
+					maxNum = Math.max(maxNum, o);
+				if (n != null)
+					maxNum = Math.max(maxNum, n);
 			}
 			int width = Math.max(1, String.valueOf(maxNum).length());
 			StringBuilder __TextAreaContent = new StringBuilder();

@@ -6,6 +6,7 @@ import com.gitalpha.Type.EFileChangeStatus;
 import com.gitalpha.Type.FileChanges;
 import com.gitalpha.Type.GitBranch;
 import com.gitalpha.Type.ISerializable;
+import javafx.util.Pair;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -171,17 +172,66 @@ public class GitDir implements ISerializable
 	{
 		if (IsBusy)
 			throw new RuntimeException("GitDir is busy");
+		IsBusy = true;
 
 		ChangedFiles.clear();
+		return Refresh_Internal();
+	}
+
+	public CompletableFuture<Void> ChangeBranch(String _Branch)
+	{
+		if (_Branch == null || _Branch.isBlank())
+			throw new RuntimeException("No branch specified to change to");
+		if (IsBusy)
+			throw new RuntimeException("GitDir is busy");
 		IsBusy = true;
+
+		// set the active branch to the requested branch
+		ActiveBranch = _Branch;
+
+		var __args = new java.util.ArrayList<String>(GitCMDConstant.Checkout);
+		__args.add(_Branch);
+
+		return RunCMDAsync(__args).thenAccept((Pair<Integer, String> Results) ->
+		{
+			try
+			{
+				var __Res = RunCMD(__args);
+				if (__Res.getKey() != 0)
+					throw new RuntimeException(__Res.getValue());
+			}
+			catch (IOException e)
+			{
+				e.printStackTrace();
+				throw new RuntimeException(e);
+			}
+			catch (InterruptedException e)
+			{
+				e.printStackTrace();
+				throw new RuntimeException(e);
+			}
+			finally
+			{
+				IsBusy = false;
+			}
+		});
+	}
+
+	private CompletableFuture<Void> Refresh_Internal()
+	{
 		return CompletableFuture.runAsync(() ->
 		{
 			// List branches
 			{
 				try
 				{
-					var __String = RunCMD(GitCMDConstant.Branches);
+					var __Res = RunCMD(GitCMDConstant.Branches);
+					if (__Res.getKey() != 0)
+						throw new IOException("git branch list failed: " + __Res.getValue());
+					var __String = __Res.getValue();
 					var __List = __String.split("\n");
+					System.out.printf("Branches: %d\n", __List.length);
+					System.out.println(__String);
 					Branches.clear(); // Clear existing branches
 
 					for (var e : __List)
@@ -211,6 +261,8 @@ public class GitDir implements ISerializable
 							continue;
 
 						String name = parts[parts.length - 1];
+						// Ensure branch name does not contain any stray markers like '*'
+						name = name.replace("*", "").trim();
 						java.util.List<String> namespace = new java.util.ArrayList<>();
 						for (int i = 0; i < parts.length - 1; ++i)
 							namespace.add(parts[i]);
@@ -230,6 +282,7 @@ public class GitDir implements ISerializable
 					e.printStackTrace();
 					throw new RuntimeException(e);
 				}
+				System.out.printf("Branches: %d\n", Branches.size());
 			}
 
 			// List changes
@@ -237,8 +290,13 @@ public class GitDir implements ISerializable
 				// List added
 				try
 				{
-					var __String = RunCMD(GitCMDConstant.Changed_Added);
+					var __Res = RunCMD(GitCMDConstant.Changed_Added);
+					if (__Res.getKey() != 0)
+						throw new IOException("git changed added failed: " + __Res.getValue());
+					var __String = __Res.getValue();
 					var __List = __String.split("\n");
+					System.out.printf("AddedFiles: %d\n", __List.length);
+					System.out.println(__String);
 
 					for (var e : __List)
 					{
@@ -270,11 +328,15 @@ public class GitDir implements ISerializable
 							}
 							catch (IOException ex)
 							{
+								System.out.printf("Error reading file %s\n", path);
 								ex.printStackTrace();
 								// Fallback: try original git diff command if reading fails
 								var __diffArgs = new java.util.ArrayList<String>(GitCMDConstant.Diff_Head_File);
 								__diffArgs.add(e);
-								diff = RunCMD(__diffArgs);
+								var __DiffRes = RunCMD(__diffArgs);
+								if (__DiffRes.getKey() != 0)
+									throw new IOException("git diff failed: " + __DiffRes.getValue());
+								diff = __DiffRes.getValue();
 								diffLines = parseDiffPerFile(diff);
 							}
 
@@ -294,8 +356,13 @@ public class GitDir implements ISerializable
 				// List modified
 				try
 				{
-					var __String = RunCMD(GitCMDConstant.Changed_Modified);
+					var __Res = RunCMD(GitCMDConstant.Changed_Modified);
+					if (__Res.getKey() != 0)
+						throw new IOException("git changed modified failed: " + __Res.getValue());
+					var __String = __Res.getValue();
 					var __List = __String.split("\n");
+					System.out.printf("ModifiedFiles: %d\n", __List.length);
+					System.out.println(__String);
 
 					for (var e : __List)
 					{
@@ -306,7 +373,10 @@ public class GitDir implements ISerializable
 							var path = GetGitDirParentPath().getParent().resolve(e);
 							var __diffArgs = new java.util.ArrayList<String>(GitCMDConstant.Diff_Head_File);
 							__diffArgs.add(e);
-							String diff = RunCMD(__diffArgs);
+							var __DiffRes = RunCMD(__diffArgs);
+							if (__DiffRes.getKey() != 0)
+								throw new IOException("git diff failed: " + __DiffRes.getValue());
+							String diff = __DiffRes.getValue();
 							var diffLines = parseDiffPerFile(diff);
 							ChangedFiles.add(new FileChanges(path, EFileChangeStatus.Modified, diff, diffLines));
 						}
@@ -326,8 +396,13 @@ public class GitDir implements ISerializable
 				// List removed
 				try
 				{
-					var __String = RunCMD(GitCMDConstant.Changed_Removed);
+					var __Res = RunCMD(GitCMDConstant.Changed_Removed);
+					if (__Res.getKey() != 0)
+						throw new IOException("git changed removed failed: " + __Res.getValue());
+					var __String = __Res.getValue();
 					var __List = __String.split("\n");
+					System.out.printf("RemovedFiles: %d\n", __List.length);
+					System.out.println(__String);
 
 					for (var e : __List)
 					{
@@ -338,7 +413,10 @@ public class GitDir implements ISerializable
 							var path = GetGitDirParentPath().getParent().resolve(e);
 							var __diffArgs = new java.util.ArrayList<String>(GitCMDConstant.Diff_Head_File);
 							__diffArgs.add(e);
-							String diff = RunCMD(__diffArgs);
+							var __DiffRes = RunCMD(__diffArgs);
+							if (__DiffRes.getKey() != 0)
+								throw new IOException("git diff failed: " + __DiffRes.getValue());
+							String diff = __DiffRes.getValue();
 							var diffLines = parseDiffPerFile(diff);
 							ChangedFiles.add(new FileChanges(path, EFileChangeStatus.Removed, diff, diffLines));
 						}
@@ -354,19 +432,36 @@ public class GitDir implements ISerializable
 					e.printStackTrace();
 					throw new RuntimeException(e);
 				}
-
-				System.out.printf("ChangedFiles: %d\n", ChangedFiles.size());
 			}
 			IsBusy = false;
 		});
 	}
 
-	public String RunCMD(List<String> args) throws IOException, InterruptedException
+	public Pair<Integer, String> RunCMD(List<String> args) throws IOException, InterruptedException
 	{
 		return RunCMDUtil.RunCMD(GitDirPath.getParent().toFile(), args);
 	}
 
-	public Future<String> RunCMDAsync(List<String> args)
+	public CompletableFuture<Pair<Integer, String>> RunCMDAsync(List<String> args)
+	{
+		return CompletableFuture.supplyAsync(() ->
+		{
+			try
+			{
+				return RunCMD(args);
+			}
+			catch (IOException e)
+			{
+				throw new RuntimeException(e);
+			}
+			catch (InterruptedException e)
+			{
+				throw new RuntimeException(e);
+			}
+		});
+	}
+
+	public Future<Pair<Integer, String>> CoRunCMD(List<String> args)
 	{
 		try (var __Future = Executors.newVirtualThreadPerTaskExecutor())
 		{

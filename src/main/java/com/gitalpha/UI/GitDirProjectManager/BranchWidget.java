@@ -3,6 +3,7 @@ package com.gitalpha.UI.GitDirProjectManager;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.GitBranch;
 import javafx.application.Platform;
+import javafx.scene.control.Alert;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.TreeItem;
@@ -15,7 +16,9 @@ import javafx.scene.input.MouseButton;
 import javafx.scene.layout.StackPane;
 import javafx.scene.text.Text;
 
-class BranchWidget extends StackPane
+import java.util.concurrent.CompletableFuture;
+
+class BranchWidget extends BaseWidget
 {
 	private static final double MIN_WIDTH = 200;
 	private static final double MIN_HEIGHT = 300;
@@ -23,11 +26,10 @@ class BranchWidget extends StackPane
 
 	private final TreeView<String> localTreeView;
 	private final TreeView<String> remoteTreeView;
-	private final GitDir GitDirTarget;
 
-	public BranchWidget(GitDir _GitDirTarget)
+	public BranchWidget(GitDir _GitDirTarget, GitDirProjectManager _GitDirProjectManagerTarget)
 	{
-		this.GitDirTarget = _GitDirTarget;
+		super(_GitDirTarget, _GitDirProjectManagerTarget);
 
 		// Create and configure the TreeViews for local and remote branches
 		localTreeView = new TreeView<>();
@@ -72,7 +74,8 @@ class BranchWidget extends StackPane
 
 		// Set up mouse click handlers
 		// Local tree click handlers
-		localTreeView.setOnMouseClicked(event -> {
+		localTreeView.setOnMouseClicked(event ->
+		{
 			TreeItem<String> sel = localTreeView.getSelectionModel().getSelectedItem();
 			if (sel != null)
 			{
@@ -90,7 +93,8 @@ class BranchWidget extends StackPane
 		});
 
 		// Remote tree click handlers
-		remoteTreeView.setOnMouseClicked(event -> {
+		remoteTreeView.setOnMouseClicked(event ->
+		{
 			TreeItem<String> sel = remoteTreeView.getSelectionModel().getSelectedItem();
 			if (sel != null)
 			{
@@ -120,63 +124,72 @@ class BranchWidget extends StackPane
 
 	private void deleteBranch()
 	{
-//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
-//		if (selectedItem != null)
-//		{
-//			String branchName = selectedItem.replaceAll("^\\s*\\*?\\s*", "").replaceAll("\\s*\\(remote\\)$", "");
-//			// TODO: Implement delete branch logic using GitDirTarget
-//		}
+		//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
+		//		if (selectedItem != null)
+		//		{
+		//			String branchName = selectedItem.replaceAll("^\\s*\\*?\\s*", "").replaceAll("\\s*\\(remote\\)$", "");
+		//			// TODO: Implement delete branch logic using GitDirTarget
+		//		}
 	}
 
 	private void pushBranch()
 	{
-//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
-//		if (selectedItem != null)
-//		{
-//			String branchName = selectedItem.replaceAll("^\\s*\\*?\\s*", "").replaceAll("\\s*\\(remote\\)$", "");
-//			// TODO: Implement push branch logic using GitDirTarget
-//		}
+		//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
+		//		if (selectedItem != null)
+		//		{
+		//			String branchName = selectedItem.replaceAll("^\\s*\\*?\\s*", "").replaceAll("\\s*\\(remote\\)$", "");
+		//			// TODO: Implement push branch logic using GitDirTarget
+		//		}
 	}
 
 	private void pullBranch()
 	{
-//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
-//		if (selectedItem != null)
-//		{
-//			String branchName = selectedItem.replaceAll("^\\s*\\*?\\s*", "").replaceAll("\\s*\\(remote\\)$", "");
-//			// TODO: Implement pull branch logic using GitDirTarget
-//		}
+		//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
+		//		if (selectedItem != null)
+		//		{
+		//			String branchName = selectedItem.replaceAll("^\\s*\\*?\\s*", "").replaceAll("\\s*\\(remote\\)$", "");
+		//			// TODO: Implement pull branch logic using GitDirTarget
+		//		}
 	}
 
-	private void updateBranchList()
+	public void updateBranchList()
 	{
+		System.out.println("Updating branch list");
 		Platform.runLater(() ->
 		{
-			// Build separate trees for local and remote branches
-			TreeItem<String> localRoot = new TreeItem<>("local-root");
-			TreeItem<String> remoteRoot = new TreeItem<>("remote-root");
-			localRoot.setExpanded(true);
-			remoteRoot.setExpanded(true);
-
-			for (GitBranch branch : GitDirTarget.GetBranches())
-			{
-				String name = branch._Name();
-				java.util.List<String> ns = branch._Namespace();
-				if (branch._Remote())
-				{
-					insertIntoTree(remoteRoot, ns, name, true);
-				}
-				else
-				{
-					insertIntoTree(localRoot, ns, name, false);
-				}
-			}
-
-			localTreeView.setShowRoot(false);
-			remoteTreeView.setShowRoot(false);
-			localTreeView.setRoot(localRoot);
-			remoteTreeView.setRoot(remoteRoot);
+			localTreeView.setRoot(null);
+			remoteTreeView.setRoot(null);
+			populateBranchTrees();
 		});
+	}
+
+	// Core population logic (must be called on JavaFX thread)
+	private void populateBranchTrees()
+	{
+		// Build separate trees for local and remote branches
+		TreeItem<String> localRoot = new TreeItem<>("local-root");
+		TreeItem<String> remoteRoot = new TreeItem<>("remote-root");
+		localRoot.setExpanded(true);
+		remoteRoot.setExpanded(true);
+
+		for (GitBranch branch : GetGitDirTarget().GetBranches())
+		{
+			String name = branch._Name();
+			java.util.List<String> ns = branch._Namespace();
+			if (branch._Remote())
+			{
+				insertIntoTree(remoteRoot, ns, name, true);
+			}
+			else
+			{
+				insertIntoTree(localRoot, ns, name, false);
+			}
+		}
+
+		localTreeView.setShowRoot(false);
+		remoteTreeView.setShowRoot(false);
+		localTreeView.setRoot(localRoot);
+		remoteTreeView.setRoot(remoteRoot);
 	}
 
 	private void insertIntoTree(TreeItem<String> root, java.util.List<String> namespace, String name, boolean isRemote)
@@ -205,7 +218,7 @@ class BranchWidget extends StackPane
 		// add leaf
 		// mark active local branch
 		String leafText = name;
-		if (!isRemote && name.equals(GitDirTarget.GetActiveBranch()))
+		if (!isRemote && name.equals(GetGitDirTarget().GetActiveBranch()))
 		{
 			leafText = ACTIVE_BRANCH_MARKER + name;
 		}
@@ -240,7 +253,21 @@ class BranchWidget extends StackPane
 
 	private void checkoutBranchByName(String fullName)
 	{
-		// TODO: Implement checkout logic using GitDirTarget.RunCMD
-		System.out.println("Checkout: " + fullName);
+		GetGitDirTarget().ChangeBranch(fullName).thenRun(() ->
+		{
+			GetGitDirProjectManagerTarget().RefreshGitDirProjectManager();
+		}).exceptionally((ex) ->
+		{
+			ex.printStackTrace();
+			Platform.runLater(() ->
+			{
+				Alert alert = new Alert(Alert.AlertType.ERROR);
+				alert.setTitle("Checkout Failed");
+				alert.setHeaderText("Failed to checkout branch");
+				alert.setContentText(ex.getMessage());
+				alert.showAndWait();
+			});
+			return null;
+		});
 	}
 }

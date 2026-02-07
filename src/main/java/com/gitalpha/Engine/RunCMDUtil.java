@@ -1,5 +1,7 @@
 package com.gitalpha.Engine;
 
+import javafx.util.Pair;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -12,7 +14,7 @@ public final class RunCMDUtil
 	{
 	}
 
-	public static String RunCMD(File _WorkingDirectory, List<String> _Args) throws IOException, InterruptedException
+	public static Pair<Integer, String> RunCMD(File _WorkingDirectory, List<String> _Args) throws IOException, InterruptedException
 	{
 		var __Git_EXE = AlphaSettings.Get().GetSettingEntry(AlphaSettings.GitPathName).GetDefaultValue_AsString();
 
@@ -37,7 +39,7 @@ public final class RunCMDUtil
 			}
 		}
 
-		process.waitFor();
-		return output.toString();
+		int ExitCode = process.waitFor();
+		return new Pair<>(ExitCode, output.toString());
 	}
 }

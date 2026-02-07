@@ -3,12 +3,10 @@ package com.gitalpha.UI.GitDirProjectManager;
 import com.gitalpha.Engine.GitDir;
 import javafx.scene.layout.StackPane;
 
-public class CommitWidget extends StackPane
+public class CommitWidget extends BaseWidget
 {
-    private GitDir GitDirTarget;
-
-    public CommitWidget(GitDir _GitDirTarget)
-    {
-        GitDirTarget = _GitDirTarget;
-    }
+	public CommitWidget(GitDir _GitDirTarget, GitDirProjectManager _GitDirProjectManagerTarget)
+	{
+		super(_GitDirTarget, _GitDirProjectManagerTarget);
+	}
 }

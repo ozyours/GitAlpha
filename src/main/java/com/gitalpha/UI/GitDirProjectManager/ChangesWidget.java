@@ -45,7 +45,7 @@ class ChangesEntry extends HBox implements INode
 
 		setOnMouseClicked(mouseEvent ->
 		{
-			ChangesWidget.GitDirProjectManagerTarget.ReadFileChanges(FileChangesTarget);
+			ChangesWidget.GetGitDirProjectManagerTarget().ReadFileChanges(FileChangesTarget);
 		});
 	}
 
@@ -86,21 +86,18 @@ class ChangesEntry extends HBox implements INode
 	}
 }
 
-public class ChangesWidget extends StackPane
+public class ChangesWidget extends BaseWidget
 {
 	private static final double MIN_WIDTH = 400;
 	private static final double MIN_HEIGHT = 300;
 	private static final int SPACING = 10;
 	private static final int PADDING = 5;
 
-	public final GitDirProjectManager GitDirProjectManagerTarget;
-	public final GitDir GitDirTarget;
 	private final ListView<ChangesEntry> changesListView;
 
-	public ChangesWidget(GitDirProjectManager _GitDirProjectManagerTarget, GitDir _GitDirTarget)
+	public ChangesWidget(GitDir _GitDirTarget, GitDirProjectManager _GitDirProjectManagerTarget)
 	{
-		GitDirProjectManagerTarget = _GitDirProjectManagerTarget;
-		GitDirTarget = _GitDirTarget;
+		super(_GitDirTarget, _GitDirProjectManagerTarget);
 
 		// Create and configure ListView
 		changesListView = new ListView<>();
@@ -114,9 +111,8 @@ public class ChangesWidget extends StackPane
 	{
 		changesListView.getItems().clear();
 
-		for (FileChanges change : GitDirProjectManagerTarget.GitDirTarget.GetChangedFiles())
+		for (FileChanges change : GetGitDirTarget().GetChangedFiles())
 		{
-			System.out.println("change: " + change);
 			// Create and add entry to the list
 			changesListView.getItems().add(new ChangesEntry(this, change));
 		}
