@@ -124,12 +124,12 @@ public class GitDir implements ISerializable
 	private final List<GitBranch> Branches = new ArrayList<>();
 	private String ActiveBranch = "";
 
-	public Path GetGitPath()
+	public Path GetGitDirPath()
 	{
 		return GitDirPath;
 	}
 
-	public String GetProjectFolderName()
+	public String GetRepoName()
 	{
 		if (GitDirPath == null)
 			return "";
@@ -142,7 +142,7 @@ public class GitDir implements ISerializable
 		return ""; // no parent (e.g., root path)
 	}
 
-	public Path GetGitDirParentPath()
+	public Path GetRepoRootPath()
 	{
 		if (GitDirPath == null)
 			return Path.of("");
@@ -304,7 +304,7 @@ public class GitDir implements ISerializable
 						e = e.replace('\\', '/');
 						if (!e.isBlank())
 						{
-							var path = GetGitDirParentPath().resolve(e);
+							var path = GetRepoRootPath().resolve(e);
 
 							// For untracked (added) files git diff against HEAD won't work.
 							// Read the file directly and synthesize a unified-style diff
@@ -370,7 +370,7 @@ public class GitDir implements ISerializable
 						e = e.replace('\\', '/');
 						if (!e.isBlank())
 						{
-							var path = GetGitDirParentPath().getParent().resolve(e);
+							var path = GetRepoRootPath().resolve(e);
 							var __diffArgs = new java.util.ArrayList<String>(GitCMDConstant.Diff_Head_File);
 							__diffArgs.add(e);
 							var __DiffRes = RunCMD(__diffArgs);
@@ -410,7 +410,7 @@ public class GitDir implements ISerializable
 						e = e.replace('\\', '/');
 						if (!e.isBlank())
 						{
-							var path = GetGitDirParentPath().getParent().resolve(e);
+							var path = GetRepoRootPath().resolve(e);
 							var __diffArgs = new java.util.ArrayList<String>(GitCMDConstant.Diff_Head_File);
 							__diffArgs.add(e);
 							var __DiffRes = RunCMD(__diffArgs);

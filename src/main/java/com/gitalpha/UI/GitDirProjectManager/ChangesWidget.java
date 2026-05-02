@@ -3,8 +3,7 @@ package com.gitalpha.UI.GitDirProjectManager;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.EFileChangeStatus;
 import com.gitalpha.Type.FileChanges;
-import com.gitalpha.UI.INode;
-import javafx.event.EventHandler;
+import com.gitalpha.UI.IObject;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.*;
@@ -15,7 +14,7 @@ import javafx.scene.text.Text;
 import java.util.ArrayList;
 import java.util.List;
 
-class ChangesEntry extends HBox implements INode
+class ChangesEntry extends HBox implements IObject
 {
 	private static final int SPACING = 10;
 	private static final int PADDING = 5;
@@ -80,7 +79,7 @@ class ChangesEntry extends HBox implements INode
 	}
 
 	@Override
-	public Node GetParent()
+	public Object GetParent()
 	{
 		return ChangesWidget;
 	}

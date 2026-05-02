@@ -1,6 +1,10 @@
 package com.gitalpha.UI.GitDirTab;
 
+import com.gitalpha.Engine.AlphaEngine;
+import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Function.GitDirFunction;
+import com.gitalpha.UI.AlphaUI;
+import com.gitalpha.UI.IObject;
 import javafx.event.EventHandler;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextField;
@@ -10,45 +14,74 @@ import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
 
 import java.nio.file.Path;
+import java.nio.file.InvalidPathException;
 
-public class ProjectBrowser extends StackPane
+public class ProjectBrowser extends StackPane implements IObject
 {
-    public ProjectBrowser(GitDirTabButton _TabButton)
-    {
-        setStyle("-fx-border-color: red;");
+	public ProjectBrowser(Object _Parent, GitDirTabButton _TabButton, AlphaUI _AlphaUI)
+	{
+		Parent = _Parent;
+		AlphaUIInstance = _AlphaUI;
 
-        var __txt_ProjectBrowser = new Text("Project Browser");
-        var __txb_ProjectPath = new TextField();
-        var __btn_OpenProject = new Button("Open");
-        __btn_OpenProject.setOnMouseClicked(new EventHandler<MouseEvent>()
-        {
-            @Override
-            public void handle(MouseEvent mouseEvent)
-            {
-                Path __SelectedPath = null;
-                try
-                {
-                    __SelectedPath = Path.of(__txb_ProjectPath.getText());
+		var __txt_ProjectBrowser = new Text("Project Browser");
+		var __txb_ProjectPath = new TextField();
+		var __btn_OpenProject = new Button("Open");
+		__btn_OpenProject.setOnMouseClicked(new EventHandler<MouseEvent>()
+		{
+			@Override
+			public void handle(MouseEvent mouseEvent)
+			{
+				String __RawInput = __txb_ProjectPath.getText();
+				if (__RawInput == null || __RawInput.isBlank())
+				{
+					System.err.println("Error opening the git dir: path is empty.");
+					return;
+				}
 
-                }
-                catch (Exception e)
-                {
-                }
+				Path __SelectedPath;
+				try
+				{
+					__SelectedPath = Path.of(__RawInput.trim());
+				}
+				catch (InvalidPathException __Ex)
+				{
+					System.err.println("Error opening the git dir: invalid path input.");
+					return;
+				}
+				Path __GitPath = GitDirFunction.TryFixGitDirPath(__SelectedPath);
 
-                if (__SelectedPath != null)
-                {
-                    __SelectedPath = GitDirFunction.TryFixGitDirPath(__SelectedPath);
-                    if (GitDirFunction.CheckGitDirValidity(__SelectedPath))
-                    {
-                        _TabButton.OpenProject(__SelectedPath);
-                        return;
-                    }
-                }
+				if (AlphaUIInstance != null)
+				{
+					GitDirTabButton ExistingTab = AlphaUIInstance.TryGetOpenTabByPath(__GitPath);
+					if (ExistingTab != null && ExistingTab.getTabPane() != null)
+					{
+						ExistingTab.getTabPane().getSelectionModel().select(ExistingTab);
+						return;
+					}
+				}
 
-                System.err.println("Error opening the git dir.");
-            }
-        });
+				GitDir __TargetGitDir = AlphaEngine.Instance.TryOpenGitDir(__SelectedPath);
 
-        getChildren().add(new VBox(__txt_ProjectBrowser, __txb_ProjectPath, __btn_OpenProject));
-    }
+				if (__TargetGitDir != null)
+				{
+					_TabButton.OpenProject(__TargetGitDir);
+				}
+				else
+				{
+					System.err.println("Error opening the git dir: " + __GitPath);
+				}
+			}
+		});
+
+		getChildren().add(new VBox(__txt_ProjectBrowser, __txb_ProjectPath, __btn_OpenProject));
+	}
+
+	private Object Parent;
+	private final AlphaUI AlphaUIInstance;
+
+	@Override
+	public Object GetParent()
+	{
+		return Parent;
+	}
 }

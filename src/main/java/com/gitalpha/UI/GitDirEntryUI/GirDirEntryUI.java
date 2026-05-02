@@ -29,7 +29,7 @@ public class GirDirEntryUI extends StackPane
         });
 
         getChildren().add(
-                new VBox(new Text(GitDirTarget.GetGitDirParentPath().toString()),
+                new VBox(new Text(GitDirTarget.GetRepoRootPath().toString()),
                         btn_Open
                 ));
     }

@@ -7,59 +7,60 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class GitDirContainer implements ISerializable
 {
-    public GitDirContainer(AlphaEngine _AlphaEngineParent)
-    {
-        AlphaEngineParent = _AlphaEngineParent;
-    }
+	public GitDirContainer(AlphaEngine _AlphaEngineParent)
+	{
+		AlphaEngineParent = _AlphaEngineParent;
+	}
 
-    private final AlphaEngine AlphaEngineParent;
-    private List<GitDir> GitDirs = new ArrayList<>();
+	private final AlphaEngine AlphaEngineParent;
+	private final List<GitDir> GitDirs = new ArrayList<>();
 
-    public AlphaEngine GetAlphaEngineParent()
-    {
-        return AlphaEngineParent;
-    }
+	public AlphaEngine GetAlphaEngineParent()
+	{
+		return AlphaEngineParent;
+	}
 
-    public List<GitDir> GetGitDirs()
-    {
-        return GitDirs;
-    }
+	public List<GitDir> GetGitDirs()
+	{
+		return GitDirs;
+	}
 
-    @Override
-    public JSONObject OnSerialize()
-    {
-        var __JSON = new JSONObject();
+	@Override
+	public JSONObject OnSerialize()
+	{
+		var __JSON = new JSONObject();
 
-        // Serialize GitDirs
-        {
-            JSONArray __Dirs = new JSONArray();
-            for (var e : GitDirs)
-            {
-                __Dirs.put(e.Serialize());
-            }
-            __JSON.put("D", GitDirs);
-        }
+		// Serialize GitDirs
+		{
+			JSONArray __Dirs = new JSONArray();
+			for (var e : GitDirs)
+			{
+				__Dirs.put(e.Serialize());
+			}
+			__JSON.put("D", GitDirs);
+		}
 
-        return __JSON;
-    }
+		return __JSON;
+	}
 
-    @Override
-    public void OnDeserialize(JSONObject JSON)
-    {
-
-        // Deserialize GitDirs
-        {
-            JSONArray __Dirs = (JSONArray) JSON.get("D");
-            for (var e : __Dirs)
-            {
-                var __d = new GitDir();
-                __d.Deserialize((JSONObject) e);
-                GitDirs.add(__d);
-            }
-        }
-    }
+	@Override
+	public void OnDeserialize(JSONObject JSON)
+	{
+		// Deserialize GitDirs
+		{
+			JSONArray __Dirs = (JSONArray) JSON.get("D");
+			for (var e : __Dirs)
+			{
+				var __d = new GitDir();
+				__d.Deserialize((JSONObject) e);
+				GitDirs.add(__d);
+			}
+		}
+	}
 }
