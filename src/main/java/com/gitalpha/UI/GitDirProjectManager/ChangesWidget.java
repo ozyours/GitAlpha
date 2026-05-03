@@ -1,9 +1,12 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
+import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.EFileChangeStatus;
+import com.gitalpha.Type.EFileChangeScope;
 import com.gitalpha.Type.FileChanges;
 import com.gitalpha.UI.IObject;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.*;
@@ -13,6 +16,7 @@ import javafx.scene.text.Text;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.nio.file.Path;
 
 class ChangesEntry extends HBox implements IObject
 {
@@ -22,11 +26,13 @@ class ChangesEntry extends HBox implements IObject
 	private final ChangesWidget ChangesWidget;
 	private final FileChanges FileChangesTarget;
 	private final CheckBox commitCheckBox;
+	private final boolean IsHeader;
 
 	public ChangesEntry(ChangesWidget _ChangesWidget, FileChanges _FileChangesTarget)
 	{
 		ChangesWidget = _ChangesWidget;
 		FileChangesTarget = _FileChangesTarget;
+		IsHeader = false;
 
 		// Configure the HBox
 		setSpacing(SPACING);
@@ -34,6 +40,11 @@ class ChangesEntry extends HBox implements IObject
 
 		// Create checkbox for selecting files to commit
 		commitCheckBox = new CheckBox();
+		commitCheckBox.setSelected(FileChangesTarget._Scope() == EFileChangeScope.STAGED);
+		commitCheckBox.setOnAction(event ->
+		{
+			ChangesWidget.ToggleStagedState(FileChangesTarget, commitCheckBox.isSelected(), commitCheckBox);
+		});
 
 		// Create text showing file status and path
 		Text statusText = createStatusText(FileChangesTarget._Status());
@@ -48,9 +59,26 @@ class ChangesEntry extends HBox implements IObject
 		});
 	}
 
+	public ChangesEntry(String _HeaderText)
+	{
+		ChangesWidget = null;
+		FileChangesTarget = null;
+		IsHeader = true;
+
+		setSpacing(SPACING);
+		setPadding(new Insets(PADDING));
+		Text headerText = new Text(_HeaderText);
+		headerText.setStyle("-fx-font-weight: bold;");
+		getChildren().add(headerText);
+
+		commitCheckBox = new CheckBox();
+		commitCheckBox.setVisible(false);
+		commitCheckBox.setManaged(false);
+	}
+
 	public boolean isSelected()
 	{
-		return commitCheckBox.isSelected();
+		return !IsHeader && commitCheckBox.isSelected();
 	}
 
 	public FileChanges getFileChanges()
@@ -110,9 +138,25 @@ public class ChangesWidget extends BaseWidget
 	{
 		changesListView.getItems().clear();
 
+		List<FileChanges> staged = new ArrayList<>();
+		List<FileChanges> unstaged = new ArrayList<>();
 		for (FileChanges change : GetGitDirTarget().GetChangedFiles())
 		{
-			// Create and add entry to the list
+			if (change._Scope() == EFileChangeScope.STAGED)
+				staged.add(change);
+			else
+				unstaged.add(change);
+		}
+
+		changesListView.getItems().add(new ChangesEntry("Staged"));
+		for (FileChanges change : staged)
+		{
+			changesListView.getItems().add(new ChangesEntry(this, change));
+		}
+
+		changesListView.getItems().add(new ChangesEntry("Unstaged"));
+		for (FileChanges change : unstaged)
+		{
 			changesListView.getItems().add(new ChangesEntry(this, change));
 		}
 	}
@@ -133,5 +177,53 @@ public class ChangesWidget extends BaseWidget
 			}
 		}
 		return selectedChanges;
+	}
+
+	void ToggleStagedState(FileChanges _Change, boolean _ShouldBeStaged, CheckBox _SourceCheckBox)
+	{
+		if (_Change == null || _Change._FilePath() == null)
+			return;
+
+		Path __RelativePath = GetGitDirTarget().GetRepoRootPath().relativize(_Change._FilePath());
+		List<String> __Cmd = new ArrayList<>();
+		if (_ShouldBeStaged)
+		{
+			__Cmd.add("add");
+			__Cmd.add("--");
+			__Cmd.add(__RelativePath.toString());
+		}
+		else
+		{
+			__Cmd.add("reset");
+			__Cmd.add("HEAD");
+			__Cmd.add("--");
+			__Cmd.add(__RelativePath.toString());
+		}
+
+		_SourceCheckBox.setDisable(true);
+		GetGitDirTarget().RunCMDAsync(__Cmd).thenAccept(result ->
+		{
+			if (result.getKey() != 0)
+				throw new RuntimeException(result.getValue());
+
+			Platform.runLater(() ->
+			{
+				AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("git-operation-completed", GetGitDirTarget());
+			});
+		}).exceptionally(ex ->
+		{
+			Platform.runLater(() ->
+			{
+				_SourceCheckBox.setDisable(false);
+				_SourceCheckBox.setSelected(!_ShouldBeStaged);
+
+				Alert __Alert = new Alert(Alert.AlertType.ERROR);
+				__Alert.setTitle("Git Operation Failed");
+				__Alert.setHeaderText(_ShouldBeStaged ? "Failed to stage file" : "Failed to unstage file");
+				__Alert.setContentText(ex.getMessage());
+				__Alert.showAndWait();
+			});
+			return null;
+		});
 	}
 }

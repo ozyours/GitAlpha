@@ -3,6 +3,7 @@ package com.gitalpha.Engine;
 import com.gitalpha.Constant.GitCMDConstant;
 import com.gitalpha.Function.StringFunction;
 import com.gitalpha.Type.EFileChangeStatus;
+import com.gitalpha.Type.EFileChangeScope;
 import com.gitalpha.Type.FileChanges;
 import com.gitalpha.Type.GitBranch;
 import com.gitalpha.Type.ISerializable;
@@ -269,157 +270,97 @@ public class GitDir implements ISerializable
 				System.out.printf("Branches: %d\n", Branches.size());
 			}
 
-			// List changes
+				CollectChangesByScope(EFileChangeScope.STAGED);
+				CollectChangesByScope(EFileChangeScope.UNSTAGED);
+			});
+		}
+
+	private void CollectChangesByScope(EFileChangeScope _Scope)
+	{
+		try
+		{
+			boolean __IsStaged = _Scope == EFileChangeScope.STAGED;
+			List<String> __AddedCmd = __IsStaged ? GitCMDConstant.Changed_Staged_Added : GitCMDConstant.Changed_Unstaged_Added;
+			List<String> __ModifiedCmd = __IsStaged ? GitCMDConstant.Changed_Staged_Modified : GitCMDConstant.Changed_Unstaged_Modified;
+			List<String> __RemovedCmd = __IsStaged ? GitCMDConstant.Changed_Staged_Removed : GitCMDConstant.Changed_Unstaged_Removed;
+			List<String> __DiffCmd = __IsStaged ? GitCMDConstant.Diff_Staged_File : GitCMDConstant.Diff_Unstaged_File;
+
+			CollectChangesByStatus(_Scope, EFileChangeStatus.Added, __AddedCmd, __DiffCmd, !__IsStaged);
+			CollectChangesByStatus(_Scope, EFileChangeStatus.Modified, __ModifiedCmd, __DiffCmd, false);
+			CollectChangesByStatus(_Scope, EFileChangeStatus.Removed, __RemovedCmd, __DiffCmd, false);
+
+			if (!__IsStaged)
 			{
-				// List added
+				CollectChangesByStatus(_Scope, EFileChangeStatus.Added, GitCMDConstant.Changed_Unstaged_Untracked, __DiffCmd, true);
+			}
+		}
+		catch (IOException | InterruptedException __Ex)
+		{
+			throw new RuntimeException(__Ex);
+		}
+	}
+
+	private void CollectChangesByStatus(EFileChangeScope _Scope, EFileChangeStatus _Status, List<String> _ListCmd, List<String> _DiffCmd, boolean _PreferReadForAdded) throws IOException, InterruptedException
+	{
+		var __Res = RunCMD(_ListCmd);
+		if (__Res.getKey() != 0)
+			throw new IOException("git change listing failed: " + __Res.getValue());
+
+		var __List = __Res.getValue().split("\n");
+		for (var e : __List)
+		{
+			e = StringFunction.FixCMDString(e);
+			e = e.replace('\\', '/');
+			if (e.isBlank())
+				continue;
+
+			var path = GetRepoRootPath().resolve(e);
+			String diff;
+			java.util.List<com.gitalpha.Type.FileChanges.LineChange> diffLines;
+
+			if (_Status == EFileChangeStatus.Added && _PreferReadForAdded)
+			{
 				try
 				{
-					var __Res = RunCMD(GitCMDConstant.Changed_Added);
-					if (__Res.getKey() != 0)
-						throw new IOException("git changed added failed: " + __Res.getValue());
-					var __String = __Res.getValue();
-					var __List = __String.split("\n");
-					System.out.printf("AddedFiles: %d\n", __List.length);
-					System.out.println(__String);
-
-					for (var e : __List)
+					var content = java.nio.file.Files.readString(path);
+					var fileLines = content.split("\\r?\\n", -1);
+					var sb = new StringBuilder();
+					sb.append(String.format("@@ -0,0 +1,%d @@\n", fileLines.length));
+					for (var line : fileLines)
 					{
-						e = StringFunction.FixCMDString(e);
-						e = e.replace('\\', '/');
-						if (!e.isBlank())
-						{
-							var path = GetRepoRootPath().resolve(e);
-
-							// For untracked (added) files git diff against HEAD won't work.
-							// Read the file directly and synthesize a unified-style diff
-							// so parseDiffPerFile can produce meaningful LineChange entries.
-							String diff;
-							java.util.List<com.gitalpha.Type.FileChanges.LineChange> diffLines;
-							try
-							{
-								var content = java.nio.file.Files.readString(path);
-								var fileLines = content.split("\\r?\\n", -1);
-								var sb = new StringBuilder();
-								sb.append(String.format("@@ -0,0 +1,%d @@\n", fileLines.length));
-								for (var line : fileLines)
-								{
-									sb.append('+');
-									sb.append(line);
-									sb.append('\n');
-								}
-								diff = sb.toString();
-								diffLines = parseDiffPerFile(diff);
-							}
-							catch (IOException ex)
-							{
-								System.out.printf("Error reading file %s\n", path);
-								ex.printStackTrace();
-								// Fallback: try original git diff command if reading fails
-								var __diffArgs = new java.util.ArrayList<String>(GitCMDConstant.Diff_Head_File);
-								__diffArgs.add(e);
-								var __DiffRes = RunCMD(__diffArgs);
-								if (__DiffRes.getKey() != 0)
-									throw new IOException("git diff failed: " + __DiffRes.getValue());
-								diff = __DiffRes.getValue();
-								diffLines = parseDiffPerFile(diff);
-							}
-
-							ChangedFiles.add(new FileChanges(path, EFileChangeStatus.Added, diff, diffLines));
-						}
+						sb.append('+');
+						sb.append(line);
+						sb.append('\n');
 					}
+					diff = sb.toString();
+					diffLines = parseDiffPerFile(diff);
 				}
 				catch (IOException ex)
 				{
-					throw new RuntimeException(ex);
-				}
-				catch (InterruptedException ex)
-				{
-					throw new RuntimeException(ex);
-				}
-
-				// List modified
-				try
-				{
-					var __Res = RunCMD(GitCMDConstant.Changed_Modified);
-					if (__Res.getKey() != 0)
-						throw new IOException("git changed modified failed: " + __Res.getValue());
-					var __String = __Res.getValue();
-					var __List = __String.split("\n");
-					System.out.printf("ModifiedFiles: %d\n", __List.length);
-					System.out.println(__String);
-
-					for (var e : __List)
-					{
-						e = StringFunction.FixCMDString(e);
-						e = e.replace('\\', '/');
-						if (!e.isBlank())
-						{
-							var path = GetRepoRootPath().resolve(e);
-							var __diffArgs = new java.util.ArrayList<String>(GitCMDConstant.Diff_Head_File);
-							__diffArgs.add(e);
-							var __DiffRes = RunCMD(__diffArgs);
-							if (__DiffRes.getKey() != 0)
-								throw new IOException("git diff failed: " + __DiffRes.getValue());
-							String diff = __DiffRes.getValue();
-							var diffLines = parseDiffPerFile(diff);
-							ChangedFiles.add(new FileChanges(path, EFileChangeStatus.Modified, diff, diffLines));
-						}
-					}
-				}
-				catch (IOException e)
-				{
-					e.printStackTrace();
-					throw new RuntimeException(e);
-				}
-				catch (InterruptedException e)
-				{
-					e.printStackTrace();
-					throw new RuntimeException(e);
-				}
-
-				// List removed
-				try
-				{
-					var __Res = RunCMD(GitCMDConstant.Changed_Removed);
-					if (__Res.getKey() != 0)
-						throw new IOException("git changed removed failed: " + __Res.getValue());
-					var __String = __Res.getValue();
-					var __List = __String.split("\n");
-					System.out.printf("RemovedFiles: %d\n", __List.length);
-					System.out.println(__String);
-
-					for (var e : __List)
-					{
-						e = StringFunction.FixCMDString(e);
-						e = e.replace('\\', '/');
-						if (!e.isBlank())
-						{
-							var path = GetRepoRootPath().resolve(e);
-							var __diffArgs = new java.util.ArrayList<String>(GitCMDConstant.Diff_Head_File);
-							__diffArgs.add(e);
-							var __DiffRes = RunCMD(__diffArgs);
-							if (__DiffRes.getKey() != 0)
-								throw new IOException("git diff failed: " + __DiffRes.getValue());
-							String diff = __DiffRes.getValue();
-							var diffLines = parseDiffPerFile(diff);
-							ChangedFiles.add(new FileChanges(path, EFileChangeStatus.Removed, diff, diffLines));
-						}
-					}
-				}
-				catch (IOException e)
-				{
-					e.printStackTrace();
-					throw new RuntimeException(e);
-				}
-				catch (InterruptedException e)
-				{
-					e.printStackTrace();
-					throw new RuntimeException(e);
+					var __diffArgs = new java.util.ArrayList<String>(_DiffCmd);
+					__diffArgs.add("--");
+					__diffArgs.add(e);
+					var __DiffRes = RunCMD(__diffArgs);
+					if (__DiffRes.getKey() != 0)
+						throw new IOException("git diff failed: " + __DiffRes.getValue());
+					diff = __DiffRes.getValue();
+					diffLines = parseDiffPerFile(diff);
 				}
 			}
+			else
+			{
+				var __diffArgs = new java.util.ArrayList<String>(_DiffCmd);
+				__diffArgs.add("--");
+				__diffArgs.add(e);
+				var __DiffRes = RunCMD(__diffArgs);
+				if (__DiffRes.getKey() != 0)
+					throw new IOException("git diff failed: " + __DiffRes.getValue());
+				diff = __DiffRes.getValue();
+				diffLines = parseDiffPerFile(diff);
+			}
 
-			IsBusy = false;
-		});
+			ChangedFiles.add(new FileChanges(path, _Status, _Scope, diff, diffLines));
+		}
 	}
 
 	public Pair<Integer, String> RunCMD(List<String> args) throws IOException, InterruptedException
