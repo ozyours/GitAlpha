@@ -1,9 +1,14 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
+import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
+import com.gitalpha.Engine.GitDirContainer.RefreshGitDirEvent;
 import com.gitalpha.Type.FileChanges;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
+import javafx.application.Platform;
 import javafx.scene.layout.*;
+
+import java.util.Objects;
 
 public class GitDirProjectManager extends StackPane
 {
@@ -45,6 +50,15 @@ public class GitDirProjectManager extends StackPane
 
 		getChildren().add(__GridLayout);
 
+		RefreshGitDirEventListener = (_GitDirTarget, _Reason) ->
+		{
+			if (_GitDirTarget == null || Objects.equals(_GitDirTarget.GetGitDirPath(), GitDirTarget.GetGitDirPath()))
+			{
+				RefreshGitDirProjectManager();
+			}
+		};
+		AlphaEngine.Instance.AddRefreshGitDirEvent(RefreshGitDirEventListener);
+
 		RefreshGitDirProjectManager();
 	}
 
@@ -55,6 +69,7 @@ public class GitDirProjectManager extends StackPane
 	private final ChangesWidget ChangesWidgetInstance;
 	private final CommitWidget CommitWidgetInstance;
 	private final TextViewerWidget TextViewerWidgetInstance;
+	private final RefreshGitDirEvent RefreshGitDirEventListener;
 
 	public void ReadFileChanges(FileChanges _FileChanges)
 	{
@@ -63,10 +78,22 @@ public class GitDirProjectManager extends StackPane
 
 	public void RefreshGitDirProjectManager()
 	{
-		GitDirTarget.Refresh().thenRun(() ->
+		try
 		{
-			ChangesWidgetInstance.updateChanges();
-			BranchWidgetInstance.updateBranchList();
-		});
+			GitDirTarget.Refresh().thenRun(() ->
+			{
+				Platform.runLater(() ->
+				{
+					ChangesWidgetInstance.updateChanges();
+					BranchWidgetInstance.updateBranchList();
+				});
+			});
+		}
+		catch (RuntimeException __Ex)
+		{
+			// Ignore overlapping refresh requests while an existing refresh is running.
+			if (!"GitDir is busy".equals(__Ex.getMessage()))
+				throw __Ex;
+		}
 	}
 }

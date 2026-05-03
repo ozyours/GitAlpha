@@ -3,8 +3,8 @@ package com.gitalpha.UI;
 import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.AlphaSettings;
 import com.gitalpha.Engine.GitDir;
-import com.gitalpha.Engine.GitDirContainer.CloseGitDirEventNew;
-import com.gitalpha.Engine.GitDirContainer.OpenGitDirEventNew;
+import com.gitalpha.Engine.GitDirContainer.CloseGitDirEvent;
+import com.gitalpha.Engine.GitDirContainer.OpenGitDirEvent;
 import com.gitalpha.Function.GitDirFunction;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
@@ -43,6 +43,16 @@ public class AlphaUI extends StackPane
 				Tab newUserTab = NewTab(null);
 				TabPaneInstance.getTabs().add(TabPaneInstance.getTabs().size() - 1, newUserTab); // insert before "+"
 				TabPaneInstance.getSelectionModel().select(newUserTab); // switch to new tab
+				return;
+			}
+
+			if (newTab instanceof GitDirTabButton)
+			{
+				GitDirTabButton __GitTab = (GitDirTabButton) newTab;
+				if (__GitTab.GetGitDirTarget() != null)
+				{
+					AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("project-tab-selected", __GitTab.GetGitDirTarget());
+				}
 			}
 		});
 
@@ -64,8 +74,8 @@ public class AlphaUI extends StackPane
 	}
 
 	private final TabPane TabPaneInstance;
-	private final OpenGitDirEventNew OpenGitDirEventListener;
-	private final CloseGitDirEventNew CloseGitDirEventListener;
+	private final OpenGitDirEvent OpenGitDirEventListener;
+	private final CloseGitDirEvent CloseGitDirEventListener;
 
 	private final Map<Path, GitDirTabButton> OpenTabsByProjectPath;
 

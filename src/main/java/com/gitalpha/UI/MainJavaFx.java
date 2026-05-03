@@ -14,6 +14,17 @@ public class MainJavaFx extends Application
 		Scene __Scene = new Scene(new AlphaUI(), 800, 600);
 		stage.setTitle("Git Alpha");
 		stage.setScene(__Scene);
+		stage.focusedProperty().addListener((obs, oldValue, newValue) ->
+		{
+			if (Boolean.TRUE.equals(newValue))
+			{
+				AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("window-focus-in", null);
+			}
+			else
+			{
+				AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("window-focus-out", null);
+			}
+		});
 		stage.show();
 	}
 

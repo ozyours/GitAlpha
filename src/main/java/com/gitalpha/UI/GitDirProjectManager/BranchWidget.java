@@ -1,5 +1,6 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
+import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.GitBranch;
 import javafx.application.Platform;
@@ -255,7 +256,7 @@ class BranchWidget extends BaseWidget
 	{
 		GetGitDirTarget().ChangeBranch(fullName).thenRun(() ->
 		{
-			GetGitDirProjectManagerTarget().RefreshGitDirProjectManager();
+			AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("git-operation-completed", GetGitDirTarget());
 		}).exceptionally((ex) ->
 		{
 			ex.printStackTrace();

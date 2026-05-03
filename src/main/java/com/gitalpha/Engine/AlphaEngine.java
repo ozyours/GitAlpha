@@ -1,17 +1,17 @@
 package com.gitalpha.Engine;
 
+import com.gitalpha.Engine.GitDirContainer.*;
 import com.gitalpha.Function.GitDirFunction;
-import com.gitalpha.Engine.GitDirContainer.CloseGitDirEventNew;
-import com.gitalpha.Engine.GitDirContainer.GitDirContainer;
-import com.gitalpha.Engine.GitDirContainer.OpenGitDirEventNew;
-import com.gitalpha.Engine.GitDirContainer.RecentGitDirContainer;
 import org.json.JSONObject;
 
 import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -22,7 +22,7 @@ public class AlphaEngine
 
 	public AlphaEngine()
 	{
-		AddOpenGitDirEvent(new OpenGitDirEventNew()
+		AddOpenGitDirEvent(new OpenGitDirEvent()
 		{
 			@Override
 			public void Event(GitDir _GitDirTarget)
@@ -32,29 +32,31 @@ public class AlphaEngine
 		});
 	}
 
-	private AlphaSettings Settings = new AlphaSettings(this);
-	private RecentGitDirContainer RecentGitDirList = new RecentGitDirContainer(this);
-	private GitDirContainer OpenGitDirList = new GitDirContainer(this);
+	private final AlphaSettings Settings = new AlphaSettings(this);
+	private final RecentGitDirContainer RecentGitDirList = new RecentGitDirContainer(this);
+	private final GitDirContainer OpenGitDirList = new GitDirContainer(this);
 
-	public AlphaSettings GetSettings()
+	public final AlphaSettings GetSettings()
 	{
 		return Settings;
 	}
 
-	public RecentGitDirContainer GetRecentGitDirList()
+	public final RecentGitDirContainer GetRecentGitDirList()
 	{
 		return RecentGitDirList;
 	}
 
-	// public OpenGitDirContainer GetOpenGitDirList()
-	// {
-	//     return OpenGitDirList;
-	// }
+	public final GitDirContainer GetOpenGitDirList()
+	{
+		return OpenGitDirList;
+	}
 
-	private final List<WeakReference<OpenGitDirEventNew>> OpenGitDirEventList = new ArrayList<>();
+	private final List<WeakReference<OpenGitDirEvent>> OpenGitDirEventList = new ArrayList<>();
 
-	private final List<WeakReference<CloseGitDirEventNew>> CloseGitDirEventList = new ArrayList<>();
+	private final List<WeakReference<CloseGitDirEvent>> CloseGitDirEventList = new ArrayList<>();
+	private final List<WeakReference<RefreshGitDirEvent>> RefreshGitDirEventList = new ArrayList<>();
 	private final Path SessionFilePath = Path.of(System.getProperty("user.home"), ".gitalpha", "session.json");
+	private String LastSessionRootHash = "";
 
 	public GitDir TryOpenGitDir(Path _ProjectPath)
 	{
@@ -103,15 +105,15 @@ public class AlphaEngine
 			JSONObject __Root = new JSONObject();
 			__Root.put("OpenGitDirList", OpenGitDirList.Serialize());
 			__Root.put("RecentGitDirList", RecentGitDirList.Serialize());
+			String __RootString = __Root.toString(2);
+			String __NewHash = ComputeSessionHash(__RootString);
+
+			if (Objects.equals(LastSessionRootHash, __NewHash))
+				return;
 
 			Files.createDirectories(SessionFilePath.getParent());
-			Files.writeString(
-					SessionFilePath,
-					__Root.toString(2),
-					StandardOpenOption.CREATE,
-					StandardOpenOption.TRUNCATE_EXISTING,
-					StandardOpenOption.WRITE
-			);
+			Files.writeString(SessionFilePath, __RootString, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+			LastSessionRootHash = __NewHash;
 		}
 		catch (IOException __Ex)
 		{
@@ -131,6 +133,7 @@ public class AlphaEngine
 				return;
 
 			JSONObject __Root = new JSONObject(__Raw);
+			LastSessionRootHash = ComputeSessionHash(__Root.toString(2));
 			if (__Root.has("OpenGitDirList"))
 			{
 				OpenGitDirList.GetGitDirs().clear();
@@ -195,12 +198,12 @@ public class AlphaEngine
 		return -1;
 	}
 
-	public void AddOpenGitDirEvent(OpenGitDirEventNew _Event)
+	public void AddOpenGitDirEvent(OpenGitDirEvent _Event)
 	{
 		OpenGitDirEventList.add(new WeakReference<>(_Event));
 	}
 
-	public void RemoveOpenGitDirEvent(OpenGitDirEventNew _Event)
+	public void RemoveOpenGitDirEvent(OpenGitDirEvent _Event)
 	{
 		int i = 0;
 		while (i < OpenGitDirEventList.size())
@@ -214,12 +217,12 @@ public class AlphaEngine
 		}
 	}
 
-	public void AddCloseGitDirEvent(CloseGitDirEventNew _Event)
+	public void AddCloseGitDirEvent(CloseGitDirEvent _Event)
 	{
 		CloseGitDirEventList.add(new WeakReference<>(_Event));
 	}
 
-	public void RemoveCloseGitDirEvent(CloseGitDirEventNew _Event)
+	public void RemoveCloseGitDirEvent(CloseGitDirEvent _Event)
 	{
 		int i = 0;
 		while (i < CloseGitDirEventList.size())
@@ -231,6 +234,31 @@ public class AlphaEngine
 			}
 			i++;
 		}
+	}
+
+	public void AddRefreshGitDirEvent(RefreshGitDirEvent _Event)
+	{
+		RefreshGitDirEventList.add(new WeakReference<>(_Event));
+	}
+
+	public void RemoveRefreshGitDirEvent(RefreshGitDirEvent _Event)
+	{
+		int i = 0;
+		while (i < RefreshGitDirEventList.size())
+		{
+			if (Objects.equals(RefreshGitDirEventList.get(i).get(), _Event))
+			{
+				RefreshGitDirEventList.remove(i);
+				break;
+			}
+			i++;
+		}
+	}
+
+	public void AttemptSaveAndBroadcastRefresh(String _Reason, GitDir _GitDirTarget)
+	{
+		SaveSession();
+		BroadcastRefreshGitDirEvent(_GitDirTarget, _Reason);
 	}
 
 	private void BroadcastOpenGitDirEvent(GitDir _GitDirTarget)
@@ -251,6 +279,25 @@ public class AlphaEngine
 		}
 	}
 
+	private String ComputeSessionHash(String _Payload)
+	{
+		try
+		{
+			MessageDigest __Digest = MessageDigest.getInstance("SHA-256");
+			byte[] __Bytes = __Digest.digest(_Payload.getBytes(StandardCharsets.UTF_8));
+			StringBuilder __Hex = new StringBuilder(__Bytes.length * 2);
+			for (byte __Byte : __Bytes)
+			{
+				__Hex.append(String.format("%02x", __Byte));
+			}
+			return __Hex.toString();
+		}
+		catch (NoSuchAlgorithmException __Ex)
+		{
+			throw new RuntimeException(__Ex);
+		}
+	}
+
 	private void BroadcastCloseGitDirEvent(GitDir _GitDirTarget)
 	{
 		int i = 0;
@@ -265,6 +312,24 @@ public class AlphaEngine
 			else
 			{
 				CloseGitDirEventList.remove(i);
+			}
+		}
+	}
+
+	private void BroadcastRefreshGitDirEvent(GitDir _GitDirTarget, String _Reason)
+	{
+		int i = 0;
+		while (i < RefreshGitDirEventList.size())
+		{
+			var e = RefreshGitDirEventList.get(i);
+			if (e.get() != null)
+			{
+				e.get().Event(_GitDirTarget, _Reason);
+				i++;
+			}
+			else
+			{
+				RefreshGitDirEventList.remove(i);
 			}
 		}
 	}
