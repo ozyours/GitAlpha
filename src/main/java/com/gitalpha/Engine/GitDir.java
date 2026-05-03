@@ -175,7 +175,7 @@ public class GitDir implements ISerializable
 		IsBusy = true;
 
 		ChangedFiles.clear();
-		return Refresh_Internal();
+		return Refresh_Internal().whenComplete((__Unused, __Err) -> IsBusy = false);
 	}
 
 	public CompletableFuture<Void> ChangeBranch(String _Branch)
@@ -186,35 +186,19 @@ public class GitDir implements ISerializable
 			throw new RuntimeException("GitDir is busy");
 		IsBusy = true;
 
-		// set the active branch to the requested branch
-		ActiveBranch = _Branch;
-
 		var __args = new java.util.ArrayList<String>(GitCMDConstant.Checkout);
 		__args.add(_Branch);
 
-		return RunCMDAsync(__args).thenAccept((Pair<Integer, String> Results) ->
-		{
-			try
-			{
-				var __Res = RunCMD(__args);
-				if (__Res.getKey() != 0)
-					throw new RuntimeException(__Res.getValue());
-			}
-			catch (IOException e)
-			{
-				e.printStackTrace();
-				throw new RuntimeException(e);
-			}
-			catch (InterruptedException e)
-			{
-				e.printStackTrace();
-				throw new RuntimeException(e);
-			}
-			finally
-			{
-				IsBusy = false;
-			}
-		});
+		return RunCMDAsync(__args)
+				.thenAccept((Pair<Integer, String> Results) ->
+				{
+					if (Results.getKey() != 0)
+						throw new RuntimeException(Results.getValue());
+
+					// set the active branch only after a successful checkout
+					ActiveBranch = _Branch;
+				})
+				.whenComplete((__Unused, __Err) -> IsBusy = false);
 	}
 
 	private CompletableFuture<Void> Refresh_Internal()
@@ -433,6 +417,7 @@ public class GitDir implements ISerializable
 					throw new RuntimeException(e);
 				}
 			}
+
 			IsBusy = false;
 		});
 	}

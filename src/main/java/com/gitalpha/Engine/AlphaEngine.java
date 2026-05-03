@@ -5,9 +5,13 @@ import com.gitalpha.Engine.GitDirContainer.CloseGitDirEventNew;
 import com.gitalpha.Engine.GitDirContainer.GitDirContainer;
 import com.gitalpha.Engine.GitDirContainer.OpenGitDirEventNew;
 import com.gitalpha.Engine.GitDirContainer.RecentGitDirContainer;
+import org.json.JSONObject;
 
+import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -23,7 +27,7 @@ public class AlphaEngine
 			@Override
 			public void Event(GitDir _GitDirTarget)
 			{
-				//                RecentGitDirList
+				// RecentGitDirList
 			}
 		});
 	}
@@ -31,7 +35,6 @@ public class AlphaEngine
 	private AlphaSettings Settings = new AlphaSettings(this);
 	private RecentGitDirContainer RecentGitDirList = new RecentGitDirContainer(this);
 	private GitDirContainer OpenGitDirList = new GitDirContainer(this);
-	// private OpenGitDirContainer OpenGitDirList = new OpenGitDirContainer(this);
 
 	public AlphaSettings GetSettings()
 	{
@@ -51,6 +54,7 @@ public class AlphaEngine
 	private final List<WeakReference<OpenGitDirEventNew>> OpenGitDirEventList = new ArrayList<>();
 
 	private final List<WeakReference<CloseGitDirEventNew>> CloseGitDirEventList = new ArrayList<>();
+	private final Path SessionFilePath = Path.of(System.getProperty("user.home"), ".gitalpha", "session.json");
 
 	public GitDir TryOpenGitDir(Path _ProjectPath)
 	{
@@ -67,6 +71,7 @@ public class AlphaEngine
 
 		var _Probe = new GitDir(_GitPath);
 		OpenGitDirList.GetGitDirs().add(_Probe);
+		RecentGitDirList.AddGitDir(_Probe);
 		BroadcastOpenGitDirEvent(_Probe);
 		return _Probe;
 	}
@@ -89,6 +94,86 @@ public class AlphaEngine
 	public List<GitDir> GetOpenGitDirs()
 	{
 		return List.copyOf(OpenGitDirList.GetGitDirs());
+	}
+
+	public synchronized void SaveSession()
+	{
+		try
+		{
+			JSONObject __Root = new JSONObject();
+			__Root.put("OpenGitDirList", OpenGitDirList.Serialize());
+			__Root.put("RecentGitDirList", RecentGitDirList.Serialize());
+
+			Files.createDirectories(SessionFilePath.getParent());
+			Files.writeString(
+					SessionFilePath,
+					__Root.toString(2),
+					StandardOpenOption.CREATE,
+					StandardOpenOption.TRUNCATE_EXISTING,
+					StandardOpenOption.WRITE
+			);
+		}
+		catch (IOException __Ex)
+		{
+			System.err.println("Error saving session: " + __Ex.getMessage());
+		}
+	}
+
+	public synchronized void LoadSession()
+	{
+		if (!Files.exists(SessionFilePath))
+			return;
+
+		try
+		{
+			String __Raw = Files.readString(SessionFilePath);
+			if (__Raw == null || __Raw.isBlank())
+				return;
+
+			JSONObject __Root = new JSONObject(__Raw);
+			if (__Root.has("OpenGitDirList"))
+			{
+				OpenGitDirList.GetGitDirs().clear();
+				OpenGitDirList.Deserialize(__Root.getJSONObject("OpenGitDirList"));
+				SanitizeGitDirContainer(OpenGitDirList);
+			}
+
+			if (__Root.has("RecentGitDirList"))
+			{
+				RecentGitDirList.GetGitDirs().clear();
+				RecentGitDirList.Deserialize(__Root.getJSONObject("RecentGitDirList"));
+				SanitizeGitDirContainer(RecentGitDirList);
+			}
+		}
+		catch (Exception __Ex)
+		{
+			System.err.println("Error loading session: " + __Ex.getMessage());
+		}
+	}
+
+	private void SanitizeGitDirContainer(GitDirContainer _Container)
+	{
+		if (_Container == null)
+			return;
+
+		int __i = 0;
+		while (__i < _Container.GetGitDirs().size())
+		{
+			GitDir __GitDir = _Container.GetGitDirs().get(__i);
+			if (__GitDir == null || __GitDir.GetGitDirPath() == null)
+			{
+				_Container.GetGitDirs().remove(__i);
+				continue;
+			}
+
+			Path __NormalizedPath = GitDirFunction.TryFixGitDirPath(__GitDir.GetGitDirPath());
+			if (!GitDirFunction.CheckGitDirValidity(__NormalizedPath))
+			{
+				_Container.GetGitDirs().remove(__i);
+				continue;
+			}
+			__i++;
+		}
 	}
 
 	private int FindOpenGitDirIndexByPath(Path _SearchPath)

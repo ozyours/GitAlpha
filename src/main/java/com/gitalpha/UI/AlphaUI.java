@@ -54,6 +54,8 @@ public class AlphaUI extends StackPane
 		CloseGitDirEventListener = (_GitDirTarget) -> Platform.runLater(() -> UnbindOpenProjectTab(_GitDirTarget));
 		AlphaEngine.Instance.AddOpenGitDirEvent(OpenGitDirEventListener);
 		AlphaEngine.Instance.AddCloseGitDirEvent(CloseGitDirEventListener);
+
+		RestoreOpenTabs();
 	}
 
 	private GitDirTabButton NewTab(GitDir _GitDir)
@@ -118,4 +120,30 @@ public class AlphaUI extends StackPane
 		return TabPaneInstance;
 	}
 
+	private void RestoreOpenTabs()
+	{
+		var __SavedOpenGitDirs = AlphaEngine.Instance.GetOpenGitDirs();
+		if (__SavedOpenGitDirs.isEmpty())
+			return;
+
+		for (int i = 0; i < __SavedOpenGitDirs.size(); ++i)
+		{
+			GitDir __GitDir = __SavedOpenGitDirs.get(i);
+			if (__GitDir == null)
+				continue;
+
+			GitDirTabButton __TabButton;
+			if (i == 0 && !TabPaneInstance.getTabs().isEmpty() && TabPaneInstance.getTabs().get(0) instanceof GitDirTabButton)
+			{
+				__TabButton = (GitDirTabButton) TabPaneInstance.getTabs().get(0);
+			}
+			else
+			{
+				__TabButton = NewTab(null);
+				TabPaneInstance.getTabs().add(TabPaneInstance.getTabs().size() - 1, __TabButton);
+			}
+
+			__TabButton.OpenProject(__GitDir);
+		}
+	}
 }

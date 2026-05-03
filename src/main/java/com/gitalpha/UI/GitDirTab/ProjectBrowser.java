@@ -6,6 +6,7 @@ import com.gitalpha.Function.GitDirFunction;
 import com.gitalpha.UI.AlphaUI;
 import com.gitalpha.UI.IObject;
 import javafx.event.EventHandler;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextField;
 import javafx.scene.input.MouseEvent;
@@ -34,7 +35,7 @@ public class ProjectBrowser extends StackPane implements IObject
 				String __RawInput = __txb_ProjectPath.getText();
 				if (__RawInput == null || __RawInput.isBlank())
 				{
-					System.err.println("Error opening the git dir: path is empty.");
+					ShowInvalidPathWarning("Project path is empty.");
 					return;
 				}
 
@@ -45,7 +46,7 @@ public class ProjectBrowser extends StackPane implements IObject
 				}
 				catch (InvalidPathException __Ex)
 				{
-					System.err.println("Error opening the git dir: invalid path input.");
+					ShowInvalidPathWarning("Project path is not valid.");
 					return;
 				}
 				Path __GitPath = GitDirFunction.TryFixGitDirPath(__SelectedPath);
@@ -68,7 +69,7 @@ public class ProjectBrowser extends StackPane implements IObject
 				}
 				else
 				{
-					System.err.println("Error opening the git dir: " + __GitPath);
+					ShowInvalidPathWarning("Project path is not a valid git repository: " + __GitPath);
 				}
 			}
 		});
@@ -83,5 +84,14 @@ public class ProjectBrowser extends StackPane implements IObject
 	public Object GetParent()
 	{
 		return Parent;
+	}
+
+	private void ShowInvalidPathWarning(String _Message)
+	{
+		Alert __Alert = new Alert(Alert.AlertType.WARNING);
+		__Alert.setTitle("Invalid Project Path");
+		__Alert.setHeaderText("Unable to open project");
+		__Alert.setContentText(_Message);
+		__Alert.showAndWait();
 	}
 }

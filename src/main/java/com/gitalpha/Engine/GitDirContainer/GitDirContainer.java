@@ -7,9 +7,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 public class GitDirContainer implements ISerializable
 {
@@ -43,7 +41,7 @@ public class GitDirContainer implements ISerializable
 			{
 				__Dirs.put(e.Serialize());
 			}
-			__JSON.put("D", GitDirs);
+			__JSON.put("D", __Dirs);
 		}
 
 		return __JSON;
