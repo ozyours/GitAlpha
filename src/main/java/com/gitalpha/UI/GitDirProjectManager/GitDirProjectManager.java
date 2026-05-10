@@ -70,6 +70,7 @@ public class GitDirProjectManager extends StackPane
 	private final CommitWidget CommitWidgetInstance;
 	private final TextViewerWidget TextViewerWidgetInstance;
 	private final RefreshGitDirEvent RefreshGitDirEventListener;
+	private boolean Disposed = false;
 
 	public void ReadFileChanges(FileChanges _FileChanges)
 	{
@@ -78,12 +79,18 @@ public class GitDirProjectManager extends StackPane
 
 	public void RefreshGitDirProjectManager()
 	{
+		if (Disposed)
+			return;
+
 		try
 		{
 			GitDirTarget.Refresh().thenRun(() ->
 			{
 				Platform.runLater(() ->
 				{
+					if (Disposed)
+						return;
+
 					ChangesWidgetInstance.updateChanges();
 					BranchWidgetInstance.updateBranchList();
 				});
@@ -95,5 +102,14 @@ public class GitDirProjectManager extends StackPane
 			if (!"GitDir is busy".equals(__Ex.getMessage()))
 				throw __Ex;
 		}
+	}
+
+	public void Dispose()
+	{
+		if (Disposed)
+			return;
+
+		Disposed = true;
+		AlphaEngine.Instance.RemoveRefreshGitDirEvent(RefreshGitDirEventListener);
 	}
 }

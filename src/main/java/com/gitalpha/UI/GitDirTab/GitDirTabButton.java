@@ -22,8 +22,13 @@ public class GitDirTabButton extends Tab implements IObject
 		setClosable(true);
 		setOnClosed(event ->
 		{
+			DisposeProjectManager();
+
 			if (GitDirTarget != null && GitDirTarget.GetGitDirPath() != null)
+			{
+				AlphaUIInstance.UnbindOpenProjectTab(GitDirTarget.GetGitDirPath());
 				AlphaEngine.Instance.TryCloseGitDir(GitDirTarget.GetGitDirPath());
+			}
 		});
 
 		setContent(new ProjectBrowser(this, this, AlphaUIInstance));
@@ -32,6 +37,7 @@ public class GitDirTabButton extends Tab implements IObject
 	private Object Parent;
 	private final AlphaUI AlphaUIInstance;
 	private GitDir GitDirTarget;
+	private GitDirProjectManager ProjectManagerInstance = null;
 
 	private String GetGitDirTabName()
 	{
@@ -51,15 +57,25 @@ public class GitDirTabButton extends Tab implements IObject
 		if (_GitDir == null)
 			return;
 
+		DisposeProjectManager();
 		GitDirTarget = _GitDir;
 		UpdateTabLabel();
 		Platform.runLater(() ->
 		{
-			var ProjectManager = new StackPane(new GitDirProjectManager(this, GitDirTarget));
-			setContent(ProjectManager);
+			ProjectManagerInstance = new GitDirProjectManager(this, GitDirTarget);
+			setContent(new StackPane(ProjectManagerInstance));
 			AlphaUIInstance.BindOpenProjectTab(GitDirTarget, this);
 			getTabPane().requestLayout();
 		});
+	}
+
+	private void DisposeProjectManager()
+	{
+		if (ProjectManagerInstance == null)
+			return;
+
+		ProjectManagerInstance.Dispose();
+		ProjectManagerInstance = null;
 	}
 
 	public GitDir GetGitDirTarget()

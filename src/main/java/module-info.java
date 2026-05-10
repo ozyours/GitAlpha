@@ -25,4 +25,6 @@ module com.gitalpha
     exports com.gitalpha.Type;
     exports com.gitalpha.UI;
     exports com.gitalpha.UI.GitDirTab;
+    exports com.gitalpha.UI.GitDirEntryUI;
+    opens com.gitalpha.UI.GitDirEntryUI to javafx.graphics;
 }

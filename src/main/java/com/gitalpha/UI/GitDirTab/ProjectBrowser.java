@@ -4,8 +4,10 @@ import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Function.GitDirFunction;
 import com.gitalpha.UI.AlphaUI;
+import com.gitalpha.UI.GitDirEntryUI.GitDirContainerUI;
 import com.gitalpha.UI.IObject;
 import javafx.event.EventHandler;
+import javafx.geometry.Insets;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextField;
@@ -27,6 +29,10 @@ public class ProjectBrowser extends StackPane implements IObject
 		var __txt_ProjectBrowser = new Text("Project Browser");
 		var __txb_ProjectPath = new TextField();
 		var __btn_OpenProject = new Button("Open");
+		var __txt_RecentOpen = new Text("Recent Open");
+
+		__txb_ProjectPath.setPadding(new Insets(8));
+		__btn_OpenProject.setPadding(new Insets(8, 12, 8, 12));
 		__btn_OpenProject.setOnMouseClicked(new EventHandler<MouseEvent>()
 		{
 			@Override
@@ -74,7 +80,15 @@ public class ProjectBrowser extends StackPane implements IObject
 			}
 		});
 
-		getChildren().add(new VBox(__txt_ProjectBrowser, __txb_ProjectPath, __btn_OpenProject));
+			var __recentOpenContainer = new GitDirContainerUI(
+					AlphaEngine.Instance.GetRecentGitDirList(),
+					_TabButton);
+
+		var __root = new VBox(10, __txt_ProjectBrowser, __txb_ProjectPath, __btn_OpenProject, __txt_RecentOpen,
+				__recentOpenContainer);
+		__root.setPadding(new Insets(12));
+
+		getChildren().add(__root);
 	}
 
 	private Object Parent;

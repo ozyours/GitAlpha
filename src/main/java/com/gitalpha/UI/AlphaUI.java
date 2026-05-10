@@ -18,9 +18,12 @@ import java.util.Map;
 
 public class AlphaUI extends StackPane
 {
+	public static AlphaUI Instance;
+
 	public AlphaUI()
 	{
 		super();
+		Instance = this;
 
 		OpenTabsByProjectPath = new HashMap<>();
 
@@ -61,7 +64,10 @@ public class AlphaUI extends StackPane
 			// Engine is source of truth for open projects; UI tab binding is explicit via BindOpenProjectTab.
 			// Keep this listener to allow future external-open flows without implicit scans.
 		});
-		CloseGitDirEventListener = (_GitDirTarget) -> Platform.runLater(() -> UnbindOpenProjectTab(_GitDirTarget));
+		CloseGitDirEventListener = (_GitDirTarget) -> Platform.runLater(() ->
+		{
+			UnbindOpenProjectTab(_GitDirTarget);
+		});
 		AlphaEngine.Instance.AddOpenGitDirEvent(OpenGitDirEventListener);
 		AlphaEngine.Instance.AddCloseGitDirEvent(CloseGitDirEventListener);
 

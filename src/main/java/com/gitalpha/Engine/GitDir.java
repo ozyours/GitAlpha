@@ -190,16 +190,14 @@ public class GitDir implements ISerializable
 		var __args = new java.util.ArrayList<String>(GitCMDConstant.Checkout);
 		__args.add(_Branch);
 
-		return RunCMDAsync(__args)
-				.thenAccept((Pair<Integer, String> Results) ->
-				{
-					if (Results.getKey() != 0)
-						throw new RuntimeException(Results.getValue());
+		return RunCMDAsync(__args).thenAccept((Pair<Integer, String> Results) ->
+		{
+			if (Results.getKey() != 0)
+				throw new RuntimeException(Results.getValue());
 
-					// set the active branch only after a successful checkout
-					ActiveBranch = _Branch;
-				})
-				.whenComplete((__Unused, __Err) -> IsBusy = false);
+			// set the active branch only after a successful checkout
+			ActiveBranch = _Branch;
+		}).whenComplete((__Unused, __Err) -> IsBusy = false);
 	}
 
 	private CompletableFuture<Void> Refresh_Internal()
@@ -270,10 +268,10 @@ public class GitDir implements ISerializable
 				System.out.printf("Branches: %d\n", Branches.size());
 			}
 
-				CollectChangesByScope(EFileChangeScope.STAGED);
-				CollectChangesByScope(EFileChangeScope.UNSTAGED);
-			});
-		}
+			CollectChangesByScope(EFileChangeScope.STAGED);
+			CollectChangesByScope(EFileChangeScope.UNSTAGED);
+		});
+	}
 
 	private void CollectChangesByScope(EFileChangeScope _Scope)
 	{

@@ -11,7 +11,10 @@ public class MainJavaFx extends Application
 	public void start(Stage stage) throws Exception
 	{
 		AlphaEngine.Instance.LoadSession();
-		Scene __Scene = new Scene(new AlphaUI(), 800, 600);
+		if (AlphaUI.Instance == null)
+			new AlphaUI();
+
+		Scene __Scene = new Scene(AlphaUI.Instance, 800, 600);
 		stage.setTitle("Git Alpha");
 		stage.setScene(__Scene);
 		stage.focusedProperty().addListener((obs, oldValue, newValue) ->
