@@ -93,6 +93,7 @@ public class GitDirProjectManager extends StackPane
 
 					ChangesWidgetInstance.updateChanges();
 					BranchWidgetInstance.updateBranchList();
+					TextViewerWidgetInstance.RefreshCurrentFileChanges();
 				});
 			});
 		}

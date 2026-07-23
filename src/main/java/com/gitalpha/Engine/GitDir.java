@@ -111,7 +111,8 @@ public class GitDir implements ISerializable
 	}
 
 	/**
-	 * Asynchronously refreshes branch list and file changes. Clears all caches first.
+	 * Asynchronously refreshes branch list and file changes using a diff-merge strategy.
+	 * Existing FileChanges objects are preserved when possible to retain cached diffs.
 	 * @return a CompletableFuture that completes when refresh is done
 	 * @throws RuntimeException if already busy
 	 */
@@ -121,7 +122,6 @@ public class GitDir implements ISerializable
 			throw new RuntimeException("GitDir is busy");
 		IsBusy = true;
 
-		ChangedFiles.clear();
 		return Refresh_Internal().whenComplete((__Unused, __Err) -> IsBusy = false);
 	}
 
@@ -153,8 +153,10 @@ public class GitDir implements ISerializable
 	}
 
 	/**
-	 * Internal async refresh: lists branches, then collects staged and unstaged changes.
-	 * Called by {@link #Refresh()} after clearing caches.
+	 * Internal async refresh: lists branches, collects new changes into a temp list,
+	 * then diff-merges with the existing ChangedFiles list.
+	 * Existing FileChanges objects are preserved when the same (Path, Scope, Status) still exists,
+	 * so that their cached diffs are retained.
 	 */
 	private CompletableFuture<Void> Refresh_Internal()
 	{
@@ -224,16 +226,47 @@ public class GitDir implements ISerializable
 				System.out.printf("Branches: %d\n", Branches.size());
 			}
 
-			CollectChangesByScope(EFileChangeScope.STAGED);
-			CollectChangesByScope(EFileChangeScope.UNSTAGED);
+			// Collect new changes into a temp list
+			var __NewChanges = new java.util.ArrayList<FileChanges>();
+			CollectChangesByScope(EFileChangeScope.STAGED, __NewChanges);
+			CollectChangesByScope(EFileChangeScope.UNSTAGED, __NewChanges);
+
+			// Diff-merge: match existing against new
+			var __ExistingIt = ChangedFiles.iterator();
+			while (__ExistingIt.hasNext())
+			{
+				var __Existing = __ExistingIt.next();
+				boolean __Found = false;
+				var __NewIt = __NewChanges.iterator();
+				while (__NewIt.hasNext())
+				{
+					var __New = __NewIt.next();
+					if (__Existing._FilePath().equals(__New._FilePath())
+						&& __Existing._Scope() == __New._Scope()
+						&& __Existing._Status() == __New._Status())
+					{
+						__NewIt.remove();
+						__Found = true;
+						break;
+					}
+				}
+				if (!__Found)
+				{
+					__ExistingIt.remove();
+				}
+			}
+
+			// Leftovers from new list are genuinely new changes
+			ChangedFiles.addAll(__NewChanges);
 		});
 	}
 
 	/**
 	 * Collects added/modified/removed file changes for a given scope (STAGED or UNSTAGED).
 	 * For UNSTAGED scope, also collects untracked files.
+	 * Results are appended to the target list.
 	 */
-	private void CollectChangesByScope(EFileChangeScope _Scope)
+	private void CollectChangesByScope(EFileChangeScope _Scope, List<FileChanges> _Target)
 	{
 		try
 		{
@@ -242,13 +275,13 @@ public class GitDir implements ISerializable
 			List<String> __ModifiedCmd = __IsStaged ? GitCMDConstant.Changed_Staged_Modified : GitCMDConstant.Changed_Unstaged_Modified;
 			List<String> __RemovedCmd = __IsStaged ? GitCMDConstant.Changed_Staged_Removed : GitCMDConstant.Changed_Unstaged_Removed;
 
-			CollectChangesByStatus(_Scope, EFileChangeStatus.Added, __AddedCmd);
-			CollectChangesByStatus(_Scope, EFileChangeStatus.Modified, __ModifiedCmd);
-			CollectChangesByStatus(_Scope, EFileChangeStatus.Removed, __RemovedCmd);
+			CollectChangesByStatus(_Scope, EFileChangeStatus.Added, __AddedCmd, _Target);
+			CollectChangesByStatus(_Scope, EFileChangeStatus.Modified, __ModifiedCmd, _Target);
+			CollectChangesByStatus(_Scope, EFileChangeStatus.Removed, __RemovedCmd, _Target);
 
 			if (!__IsStaged)
 			{
-				CollectChangesByStatus(_Scope, EFileChangeStatus.Added, GitCMDConstant.Changed_Unstaged_Untracked);
+				CollectChangesByStatus(_Scope, EFileChangeStatus.Added, GitCMDConstant.Changed_Unstaged_Untracked, _Target);
 			}
 		}
 		catch (IOException | InterruptedException __Ex)
@@ -259,9 +292,9 @@ public class GitDir implements ISerializable
 
 	/**
 	 * Runs a git command to list files of a given change status, parses the output,
-	 * and appends FileChange entries to ChangedFiles.
+	 * and appends FileChange entries to the target list.
 	 */
-	private void CollectChangesByStatus(EFileChangeScope _Scope, EFileChangeStatus _Status, List<String> _ListCmd) throws IOException, InterruptedException
+	private void CollectChangesByStatus(EFileChangeScope _Scope, EFileChangeStatus _Status, List<String> _ListCmd, List<FileChanges> _Target) throws IOException, InterruptedException
 	{
 		var __Res = RunCMD(_ListCmd);
 		if (__Res.getKey() != 0)
@@ -276,7 +309,7 @@ public class GitDir implements ISerializable
 				continue;
 
 			var path = GetRepoRootPath().resolve(e);
-			ChangedFiles.add(new FileChanges(path, _Status, _Scope, this));
+			_Target.add(new FileChanges(path, _Status, _Scope, this));
 		}
 	}
 
