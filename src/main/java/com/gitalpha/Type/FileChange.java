@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-public class FileChanges
+public class FileChange
 {
 	private final Path FilePath;
 	private final EFileChangeStatus Status;
@@ -21,7 +21,7 @@ public class FileChanges
 	private List<LineChange> CachedDiff;
 	private FileTime LastKnownModified;
 
-	public FileChanges(Path _FilePath, EFileChangeStatus _Status, EFileChangeScope _Scope, GitDir _Owner)
+	public FileChange(Path _FilePath, EFileChangeStatus _Status, EFileChangeScope _Scope, GitDir _Owner)
 	{
 		FilePath = _FilePath;
 		Status = _Status;

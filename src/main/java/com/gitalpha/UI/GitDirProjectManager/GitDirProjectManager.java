@@ -3,7 +3,7 @@ package com.gitalpha.UI.GitDirProjectManager;
 import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Engine.GitDirContainer.RefreshGitDirEvent;
-import com.gitalpha.Type.FileChanges;
+import com.gitalpha.Type.FileChange;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
 import javafx.scene.layout.*;
@@ -26,7 +26,7 @@ public class GitDirProjectManager extends StackPane
 		BranchWidgetInstance = new BranchWidget(GitDirTarget, this);
 		ChangesWidgetInstance = new ChangesWidget(GitDirTarget, this);
 		CommitWidgetInstance = new CommitWidget(GitDirTarget, this);
-		TextViewerWidgetInstance = new TextViewerWidget(GitDirTarget, this); // TODO: Pass the selected FileChanges when implemented
+		TextViewerWidgetInstance = new TextViewerWidget(GitDirTarget, this); // TODO: Pass the selected FileChange when implemented
 
 		var __GridLayout = new GridPane();
 
@@ -72,9 +72,9 @@ public class GitDirProjectManager extends StackPane
 	private final RefreshGitDirEvent RefreshGitDirEventListener;
 	private boolean Disposed = false;
 
-	public void ReadFileChanges(FileChanges _FileChanges)
+	public void ReadFileChange(FileChange _FileChange)
 	{
-		TextViewerWidgetInstance.SetFileChanges(_FileChanges);
+		TextViewerWidgetInstance.SetFileChange(_FileChange);
 	}
 
 	public void RefreshGitDirProjectManager()
@@ -93,7 +93,7 @@ public class GitDirProjectManager extends StackPane
 
 					ChangesWidgetInstance.updateChanges();
 					BranchWidgetInstance.updateBranchList();
-					TextViewerWidgetInstance.RefreshCurrentFileChanges();
+					TextViewerWidgetInstance.RefreshCurrentFileChange();
 				});
 			});
 		}

@@ -4,7 +4,7 @@ import com.gitalpha.Constant.GitCMDConstant;
 import com.gitalpha.Function.StringFunction;
 import com.gitalpha.Type.EFileChangeStatus;
 import com.gitalpha.Type.EFileChangeScope;
-import com.gitalpha.Type.FileChanges;
+import com.gitalpha.Type.FileChange;
 import com.gitalpha.Type.GitBranch;
 import com.gitalpha.Type.ISerializable;
 import javafx.util.Pair;
@@ -46,7 +46,7 @@ public class GitDir implements ISerializable
 	private boolean IsBusy = false;
 
 	/** Accumulated file changes detected during the last refresh */
-	private final List<FileChanges> ChangedFiles = new ArrayList<>();
+	private final List<FileChange> ChangedFiles = new ArrayList<>();
 	/** All branches (local + remote) parsed from `git branch -a` */
 	private final List<GitBranch> Branches = new ArrayList<>();
 	/** Name of the currently checked-out branch */
@@ -90,7 +90,7 @@ public class GitDir implements ISerializable
 	 * @return list of changed files collected during the last refresh
 	 * @throws RuntimeException if a refresh is currently in progress
 	 */
-	public List<FileChanges> GetChangedFiles() throws RuntimeException
+	public List<FileChange> GetChangedFiles() throws RuntimeException
 	{
 		if (IsBusy)
 			throw new RuntimeException("GitDir is busy");
@@ -112,7 +112,7 @@ public class GitDir implements ISerializable
 
 	/**
 	 * Asynchronously refreshes branch list and file changes using a diff-merge strategy.
-	 * Existing FileChanges objects are preserved when possible to retain cached diffs.
+	 * Existing FileChange objects are preserved when possible to retain cached diffs.
 	 * @return a CompletableFuture that completes when refresh is done
 	 * @throws RuntimeException if already busy
 	 */
@@ -155,7 +155,7 @@ public class GitDir implements ISerializable
 	/**
 	 * Internal async refresh: lists branches, collects new changes into a temp list,
 	 * then diff-merges with the existing ChangedFiles list.
-	 * Existing FileChanges objects are preserved when the same (Path, Scope, Status) still exists,
+	 * Existing FileChange objects are preserved when the same (Path, Scope, Status) still exists,
 	 * so that their cached diffs are retained.
 	 */
 	private CompletableFuture<Void> Refresh_Internal()
@@ -227,7 +227,7 @@ public class GitDir implements ISerializable
 			}
 
 			// Collect new changes into a temp list
-			var __NewChanges = new java.util.ArrayList<FileChanges>();
+			var __NewChanges = new java.util.ArrayList<FileChange>();
 			CollectChangesByScope(EFileChangeScope.STAGED, __NewChanges);
 			CollectChangesByScope(EFileChangeScope.UNSTAGED, __NewChanges);
 
@@ -266,7 +266,7 @@ public class GitDir implements ISerializable
 	 * For UNSTAGED scope, also collects untracked files.
 	 * Results are appended to the target list.
 	 */
-	private void CollectChangesByScope(EFileChangeScope _Scope, List<FileChanges> _Target)
+	private void CollectChangesByScope(EFileChangeScope _Scope, List<FileChange> _Target)
 	{
 		try
 		{
@@ -294,7 +294,7 @@ public class GitDir implements ISerializable
 	 * Runs a git command to list files of a given change status, parses the output,
 	 * and appends FileChange entries to the target list.
 	 */
-	private void CollectChangesByStatus(EFileChangeScope _Scope, EFileChangeStatus _Status, List<String> _ListCmd, List<FileChanges> _Target) throws IOException, InterruptedException
+	private void CollectChangesByStatus(EFileChangeScope _Scope, EFileChangeStatus _Status, List<String> _ListCmd, List<FileChange> _Target) throws IOException, InterruptedException
 	{
 		var __Res = RunCMD(_ListCmd);
 		if (__Res.getKey() != 0)
@@ -309,7 +309,7 @@ public class GitDir implements ISerializable
 				continue;
 
 			var path = GetRepoRootPath().resolve(e);
-			_Target.add(new FileChanges(path, _Status, _Scope, this));
+			_Target.add(new FileChange(path, _Status, _Scope, this));
 		}
 	}
 

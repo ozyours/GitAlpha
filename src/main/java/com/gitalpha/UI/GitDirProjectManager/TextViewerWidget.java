@@ -1,7 +1,7 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
 import com.gitalpha.Engine.GitDir;
-import com.gitalpha.Type.FileChanges;
+import com.gitalpha.Type.FileChange;
 import javafx.application.Platform;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.*;
@@ -58,12 +58,24 @@ public class TextViewerWidget extends BaseWidget
 		List<StyledSegment> newSegments
 	) {}
 
+	/**
+	 * Data-only carrier for a single diff row, produced off the JavaFX thread.
+	 * Contains everything {@link #renderDiffRow} needs to create the JavaFX nodes.
+	 */
+	private static record PreparedRow(
+		char prefix,
+		Integer oldLineNumber,
+		Integer newLineNumber,
+		String text,
+		List<StyledSegment> intraSegments
+	) {}
+
 	/** Wraps the content container for scrolling */
 	private final ScrollPane scrollPane;
 	/** Holds the diff line rows (HBoxes) */
 	private final VBox contentContainer;
 	/** The file changes whose diff is currently displayed; null if none */
-	private FileChanges FileChangesTarget = null;
+	private FileChange FileChangeTarget = null;
 
 	public TextViewerWidget(GitDir _GitDirTarget, GitDirProjectManager _GitDirProjectManagerTarget)
 	{
@@ -212,43 +224,65 @@ public class TextViewerWidget extends BaseWidget
 	 * If a file change is currently displayed, re-loads its diff.
 	 * Called after a repository refresh to pick up any modifications.
 	 */
-	public void RefreshCurrentFileChanges()
+	public void RefreshCurrentFileChange()
 	{
-		if (FileChangesTarget != null)
-			SetFileChanges(FileChangesTarget);
+		if (FileChangeTarget != null)
+			SetFileChange(FileChangeTarget);
 	}
 
 	/**
 	 * Loads and displays the diff for the given file change.
 	 * Shows a "Loading..." indicator, then replaces it with the rendered diff
 	 * or an error message. Stale responses (for a superseded target) are dropped.
+	 * <p>
+	 * Intra-line diff computation (LCS) runs <em>off</em> the JavaFX thread so the
+	 * UI stays responsive even for large files.  Only the actual JavaFX node
+	 * creation happens on the JavaFX thread, via a single {@link Platform#runLater}
+	 * flush.
 	 */
-	public void SetFileChanges(FileChanges _FileChangesTarget)
+	public void SetFileChange(FileChange _FileChangeTarget)
 	{
-		FileChangesTarget = _FileChangesTarget;
+		FileChangeTarget = _FileChangeTarget;
 		contentContainer.getChildren().clear();
 
-		if (FileChangesTarget == null)
+		if (FileChangeTarget == null)
 			return;
 
+		StackPane loadingPane = new StackPane();
 		Text loadingText = new Text("Loading...");
 		loadingText.setFont(MONO_FONT);
-		contentContainer.getChildren().add(loadingText);
+		loadingPane.getChildren().add(loadingText);
+		// Fill the viewport height so the StackPane centers the text vertically
+		loadingPane.prefHeightProperty().bind(
+			scrollPane.viewportBoundsProperty()
+				.map(b -> (b != null) ? b.getHeight() : scrollPane.getHeight())
+		);
+		contentContainer.getChildren().add(loadingPane);
 
-		FileChangesTarget.getDiffLines()
-			.thenAccept(diffLines ->
+		FileChangeTarget.getDiffLines()
+			.thenAcceptAsync(diffLines ->
+			{
+				// (runs on ForkJoinPool or cached-executor thread)
+				if (FileChangeTarget != _FileChangeTarget)
+					return;							// stale — user switched to another file
+
+				// ---- Phase 1: pair + LCS (no JavaFX, pure data) ----
+				List<PreparedRow> prepared = prepareDiffRows(diffLines);
+
+				// ---- Phase 2: single flush to JavaFX thread for node creation ----
 				Platform.runLater(() ->
 				{
-					if (FileChangesTarget != _FileChangesTarget)
-						return;
-					renderDiffLines(diffLines);
-				})
-			)
+					if (FileChangeTarget != _FileChangeTarget)
+						return;						// stale by the time we got to FX
+
+					renderPreparedRows(prepared);
+				});
+			})
 			.exceptionally(ex ->
 			{
 				Platform.runLater(() ->
 				{
-					if (FileChangesTarget == _FileChangesTarget)
+					if (FileChangeTarget == _FileChangeTarget)
 					{
 						contentContainer.getChildren().clear();
 						Text errorText = new Text("Error: " + ex.getCause().getMessage());
@@ -261,37 +295,29 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
-	 * Builds and displays the coloured diff rows from parsed LineChange entries.
-	 * Pairs consecutive {@code -} / {@code +} lines to compute intra-line word-level
-	 * highlighting, showing exactly which tokens were added or removed.
+	 * Pairs {@code -} / {@code +} diff lines and computes intra-line (word-level)
+	 * diffs for each pair.  Returns a list of plain-data {@link PreparedRow}
+	 * records that can be handed to {@link #renderPreparedRows}.
+	 * <p>
+	 * This method performs <strong>no JavaFX operations</strong> — it is safe
+	 * to call from any thread (and is intentionally invoked off the JavaFX thread
+	 * via {@link java.util.concurrent.CompletableFuture#thenAcceptAsync}).
 	 */
-	private void renderDiffLines(List<FileChanges.LineChange> diffLines)
+	private static List<PreparedRow> prepareDiffRows(List<FileChange.LineChange> diffLines)
 	{
-		contentContainer.getChildren().clear();
+		List<PreparedRow> result = new ArrayList<>();
 
 		if (diffLines.isEmpty())
-			return;
-
-		int maxNum = 0;
-		for (var e : diffLines)
-		{
-			if (e.oldLineNumber() != null)
-				maxNum = Math.max(maxNum, e.oldLineNumber());
-			if (e.newLineNumber() != null)
-				maxNum = Math.max(maxNum, e.newLineNumber());
-		}
-		int numWidth = Math.max(1, String.valueOf(maxNum).length());
-		String numFormat = "%" + numWidth + "d";
-		String emptyNum = " ".repeat(numWidth);
+			return result;
 
 		// Pending removal lines that may pair with following additions
-		ArrayDeque<FileChanges.LineChange> pendingRemovals = new ArrayDeque<>();
+		ArrayDeque<FileChange.LineChange> pendingRemovals = new ArrayDeque<>();
 
 		for (var line : diffLines)
 		{
 			char prefix = line.prefix();
 
-			// Accumulate removals; don't render yet — wait for a matching addition.
+			// Accumulate removals; wait for a matching addition.
 			if (prefix == '-')
 			{
 				pendingRemovals.addLast(line);
@@ -303,52 +329,95 @@ public class TextViewerWidget extends BaseWidget
 				if (!pendingRemovals.isEmpty())
 				{
 					// Pair the oldest pending removal with this addition
-					FileChanges.LineChange removedLine = pendingRemovals.removeFirst();
+					FileChange.LineChange removedLine = pendingRemovals.removeFirst();
 					IntraLineDiff diff = computeIntraLineDiff(removedLine.text(), line.text());
-					renderDiffRow(removedLine, numFormat, emptyNum, diff.oldSegments());
-					renderDiffRow(line, numFormat, emptyNum, diff.newSegments());
+					result.add(new PreparedRow(
+						removedLine.prefix(), removedLine.oldLineNumber(), removedLine.newLineNumber(),
+						removedLine.text(), diff.oldSegments()));
+					result.add(new PreparedRow(
+						line.prefix(), line.oldLineNumber(), line.newLineNumber(),
+						line.text(), diff.newSegments()));
 				}
 				else
 				{
 					// Pure addition — no matching removal
-					renderDiffRow(line, numFormat, emptyNum, null);
+					result.add(new PreparedRow(
+						line.prefix(), line.oldLineNumber(), line.newLineNumber(),
+						line.text(), null));
 				}
 				continue;
 			}
 
 			// Context (or other non-diff) line — flush any pending removals as pure removals
 			while (!pendingRemovals.isEmpty())
-				renderDiffRow(pendingRemovals.removeFirst(), numFormat, emptyNum, null);
-			renderDiffRow(line, numFormat, emptyNum, null);
+			{
+				FileChange.LineChange rm = pendingRemovals.removeFirst();
+				result.add(new PreparedRow(
+					rm.prefix(), rm.oldLineNumber(), rm.newLineNumber(),
+					rm.text(), null));
+			}
+			result.add(new PreparedRow(
+				line.prefix(), line.oldLineNumber(), line.newLineNumber(),
+				line.text(), null));
 		}
 
 		// Flush remaining unpaired removals at end
 		while (!pendingRemovals.isEmpty())
-			renderDiffRow(pendingRemovals.removeFirst(), numFormat, emptyNum, null);
+		{
+			FileChange.LineChange rm = pendingRemovals.removeFirst();
+			result.add(new PreparedRow(
+				rm.prefix(), rm.oldLineNumber(), rm.newLineNumber(),
+				rm.text(), null));
+		}
+
+		return result;
 	}
 
 	/**
-	 * Renders a single diff row (bar + line numbers + prefix + content text).
-	 *
-	 * @param line           the diff line to render
-	 * @param numFormat      format string for line numbers
-	 * @param emptyNum       blank placeholder when a line number is absent
-	 * @param intraSegments  intra-line styled segments (nullable).
-	 *                       When {@code null} the entire line text is drawn as a single
-	 *                       plain {@link Text}; otherwise each segment is drawn separately
-	 *                       with changed portions highlighted.
+	 * Creates and attaches JavaFX nodes for all rows that were previously
+	 * prepared by {@link #prepareDiffRows}.
+	 * <p>
+	 * <strong>Must be called on the JavaFX Application Thread.</strong>
 	 */
-	private void renderDiffRow(
-		FileChanges.LineChange line,
-		String numFormat,
-		String emptyNum,
-		List<StyledSegment> intraSegments)
+	private void renderPreparedRows(List<PreparedRow> prepared)
 	{
-		HBox row = new HBox();
-		row.setMaxWidth(Double.MAX_VALUE);
+		contentContainer.getChildren().clear();
 
-		boolean added = line.prefix() == '+';
-		boolean removed = line.prefix() == '-';
+		if (prepared.isEmpty())
+			return;
+
+		// Determine the widest line number for padding alignment
+		int maxNum = 0;
+		for (var row : prepared)
+		{
+			if (row.oldLineNumber() != null)
+				maxNum = Math.max(maxNum, row.oldLineNumber());
+			if (row.newLineNumber() != null)
+				maxNum = Math.max(maxNum, row.newLineNumber());
+		}
+		int numWidth = Math.max(1, String.valueOf(maxNum).length());
+		String numFormat = "%" + numWidth + "d";
+		String emptyNum = " ".repeat(numWidth);
+
+		for (var row : prepared)
+			renderDiffRow(row, numFormat, emptyNum);
+	}
+
+	/**
+	 * Renders a single diff row (bar + line numbers + prefix + content text)
+	 * from a pre-computed {@link PreparedRow}.
+	 *
+	 * @param row       the pre-computed row data (produced off-thread)
+	 * @param numFormat format string for line numbers
+	 * @param emptyNum  blank placeholder when a line number is absent
+	 */
+	private void renderDiffRow(PreparedRow row, String numFormat, String emptyNum)
+	{
+		HBox rowBox = new HBox();
+		rowBox.setMaxWidth(Double.MAX_VALUE);
+
+		boolean added = row.prefix() == '+';
+		boolean removed = row.prefix() == '-';
 
 		// Colour-coded left bar
 		Pane bar = new Pane();
@@ -357,12 +426,12 @@ public class TextViewerWidget extends BaseWidget
 
 		if (added)
 		{
-			row.setStyle("-fx-background-color: " + ADDED_BG + ";");
+			rowBox.setStyle("-fx-background-color: " + ADDED_BG + ";");
 			bar.setStyle("-fx-background-color: " + ADDED_BAR + ";");
 		}
 		else if (removed)
 		{
-			row.setStyle("-fx-background-color: " + REMOVED_BG + ";");
+			rowBox.setStyle("-fx-background-color: " + REMOVED_BG + ";");
 			bar.setStyle("-fx-background-color: " + REMOVED_BAR + ";");
 		}
 		else
@@ -371,8 +440,8 @@ public class TextViewerWidget extends BaseWidget
 		}
 
 		// Line numbers
-		String oldStr = line.oldLineNumber() == null ? emptyNum : String.format(numFormat, line.oldLineNumber());
-		String newStr = line.newLineNumber() == null ? emptyNum : String.format(numFormat, line.newLineNumber());
+		String oldStr = row.oldLineNumber() == null ? emptyNum : String.format(numFormat, row.oldLineNumber());
+		String newStr = row.newLineNumber() == null ? emptyNum : String.format(numFormat, row.newLineNumber());
 
 		Text oldNum = new Text(" " + oldStr);
 		oldNum.setFont(MONO_FONT);
@@ -383,7 +452,7 @@ public class TextViewerWidget extends BaseWidget
 		newNum.setFill(Color.GRAY);
 
 		// Prefix character
-		Text prefixText = new Text(" " + line.prefix());
+		Text prefixText = new Text(" " + row.prefix());
 		prefixText.setFont(MONO_FONT);
 		if (added)
 			prefixText.setFill(Color.rgb(45, 164, 78));
@@ -393,10 +462,10 @@ public class TextViewerWidget extends BaseWidget
 			prefixText.setFill(Color.GRAY);
 
 		// Content — either intra-line segments or plain text
-		HBox content = createContentNode(line, intraSegments);
+		HBox content = createContentNode(row.prefix(), row.text(), row.intraSegments());
 
-		row.getChildren().addAll(bar, oldNum, newNum, prefixText, content);
-		contentContainer.getChildren().add(row);
+		rowBox.getChildren().addAll(bar, oldNum, newNum, prefixText, content);
+		contentContainer.getChildren().add(rowBox);
 	}
 
 	/**
@@ -406,11 +475,15 @@ public class TextViewerWidget extends BaseWidget
 	 * individual {@link Text} / {@link StackPane} nodes per segment so that
 	 * changed tokens get a background highlight.  Otherwise a plain {@link Text}
 	 * node is returned.
+	 *
+	 * @param prefix        the diff prefix character ({@code '+'}, {@code '-'}, or {@code ' '})
+	 * @param text          the raw line text
+	 * @param intraSegments intra-line styled segments (nullable)
 	 */
-	private HBox createContentNode(FileChanges.LineChange line, List<StyledSegment> intraSegments)
+	private static HBox createContentNode(char prefix, String text, List<StyledSegment> intraSegments)
 	{
-		boolean added = line.prefix() == '+';
-		boolean removed = line.prefix() == '-';
+		boolean added = prefix == '+';
+		boolean removed = prefix == '-';
 
 		// Leading visual space (separates content from the prefix character)
 		Text spacer = new Text(" ");
@@ -419,9 +492,8 @@ public class TextViewerWidget extends BaseWidget
 		if (intraSegments == null || intraSegments.isEmpty())
 		{
 			// Plain text (pure addition/removal or context line)
-			Text plain = new Text(line.text());
+			Text plain = new Text(text);
 			plain.setFont(MONO_FONT);
-			// Combine spacer and text into an HBox so the return type is always a container
 			HBox box = new HBox(0);
 			box.getChildren().addAll(spacer, plain);
 			return box;
