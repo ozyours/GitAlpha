@@ -26,7 +26,7 @@ class ChangeEntryWidget extends HBox implements IObject
 
 	private final ChangesWidget ChangesWidget;
 	private final FileChange FileChangeTarget;
-	private final CheckBox commitCheckBox;
+	private final CheckBox CommitCheckBox;
 	final boolean IsHeader;
 
 	public ChangeEntryWidget(ChangesWidget _ChangesWidget, FileChange _FileChangeTarget)
@@ -40,19 +40,19 @@ class ChangeEntryWidget extends HBox implements IObject
 		setPadding(new Insets(PADDING));
 
 		// Create checkbox for selecting files to commit
-		commitCheckBox = new CheckBox();
-		commitCheckBox.setSelected(FileChangeTarget._Scope() == EFileChangeScope.STAGED);
-		commitCheckBox.setOnAction(event ->
+		CommitCheckBox = new CheckBox();
+		CommitCheckBox.setSelected(FileChangeTarget.GetScope() == EFileChangeScope.STAGED);
+		CommitCheckBox.setOnAction(event ->
 		{
-			ChangesWidget.ToggleStagedState(FileChangeTarget, commitCheckBox.isSelected(), commitCheckBox);
+			ChangesWidget.ToggleStagedState(FileChangeTarget, CommitCheckBox.isSelected(), CommitCheckBox);
 		});
 
 		// Create text showing file status and path
-		Text statusText = createStatusText(FileChangeTarget._Status());
-		Text pathText = new Text(FileChangeTarget._FilePath().getFileName().toString());
+		Text statusText = CreateStatusText(FileChangeTarget.GetStatus());
+		Text pathText = new Text(FileChangeTarget.GetFilePath().getFileName().toString());
 
 		// Add components to the entry
-		getChildren().addAll(commitCheckBox, statusText, pathText);
+		getChildren().addAll(CommitCheckBox, statusText, pathText);
 
 		setOnMouseClicked(mouseEvent ->
 		{
@@ -72,22 +72,22 @@ class ChangeEntryWidget extends HBox implements IObject
 		headerText.setStyle("-fx-font-weight: bold;");
 		getChildren().add(headerText);
 
-		commitCheckBox = new CheckBox();
-		commitCheckBox.setVisible(false);
-		commitCheckBox.setManaged(false);
+		CommitCheckBox = new CheckBox();
+		CommitCheckBox.setVisible(false);
+		CommitCheckBox.setManaged(false);
 	}
 
-	public boolean isSelected()
+	public boolean IsSelected()
 	{
-		return !IsHeader && commitCheckBox.isSelected();
+		return !IsHeader && CommitCheckBox.isSelected();
 	}
 
-	public FileChange getFileChange()
+	public FileChange GetFileChange()
 	{
 		return FileChangeTarget;
 	}
 
-	private Text createStatusText(EFileChangeStatus status)
+	private Text CreateStatusText(EFileChangeStatus status)
 	{
 		Text statusText = new Text();
 		statusText.setText(switch (status)
@@ -121,20 +121,20 @@ public class ChangesWidget extends BaseWidget
 	private static final int SPACING = 10;
 	private static final int PADDING = 5;
 
-	private final ListView<ChangeEntryWidget> changesListView;
+	private final ListView<ChangeEntryWidget> ChangesListView;
 
 	public ChangesWidget(GitDir _GitDirTarget, GitDirProjectManager _GitDirProjectManagerTarget)
 	{
 		super(_GitDirTarget, _GitDirProjectManagerTarget);
 
 		// Create and configure ListView
-		changesListView = new ListView<>();
-		changesListView.setMinSize(MIN_WIDTH, MIN_HEIGHT);
+		ChangesListView = new ListView<>();
+		ChangesListView.setMinSize(MIN_WIDTH, MIN_HEIGHT);
 
 		// Add ListView to the StackPane
-		getChildren().add(changesListView);
+		getChildren().add(ChangesListView);
 		// Clear the diff viewer when clicking on headers or empty space
-		changesListView.addEventHandler(MouseEvent.MOUSE_CLICKED, event ->
+		ChangesListView.addEventHandler(MouseEvent.MOUSE_CLICKED, event ->
 		{
 			// Walk up from the clicked node to see if it is inside a ChangesEntry
 			Node clickTarget = (Node) event.getTarget();
@@ -146,43 +146,43 @@ public class ChangesWidget extends BaseWidget
 				// Click on a "Staged" or "Unstaged" header -> clear the diff view and selection
 				if (entry.IsHeader)
 				{
-					changesListView.getSelectionModel().clearSelection();
+					ChangesListView.getSelectionModel().clearSelection();
 					GetGitDirProjectManagerTarget().ReadFileChange(null);
 				}
 			}
 			else
 			{
 				// Click on empty space in the ListView -> clear the diff view and selection
-				changesListView.getSelectionModel().clearSelection();
+				ChangesListView.getSelectionModel().clearSelection();
 				GetGitDirProjectManagerTarget().ReadFileChange(null);
 			}
 		});
 	}
 
-	public void updateChanges()
+	public void UpdateChanges()
 	{
-		changesListView.getItems().clear();
+		ChangesListView.getItems().clear();
 
 		List<FileChange> staged = new ArrayList<>();
 		List<FileChange> unstaged = new ArrayList<>();
 		for (FileChange change : GetGitDirTarget().GetChangedFiles())
 		{
-			if (change._Scope() == EFileChangeScope.STAGED)
+			if (change.GetScope() == EFileChangeScope.STAGED)
 				staged.add(change);
 			else
 				unstaged.add(change);
 		}
 
-		changesListView.getItems().add(new ChangeEntryWidget("Staged"));
+		ChangesListView.getItems().add(new ChangeEntryWidget("Staged"));
 		for (FileChange change : staged)
 		{
-			changesListView.getItems().add(new ChangeEntryWidget(this, change));
+			ChangesListView.getItems().add(new ChangeEntryWidget(this, change));
 		}
 
-		changesListView.getItems().add(new ChangeEntryWidget("Unstaged"));
+		ChangesListView.getItems().add(new ChangeEntryWidget("Unstaged"));
 		for (FileChange change : unstaged)
 		{
-			changesListView.getItems().add(new ChangeEntryWidget(this, change));
+			ChangesListView.getItems().add(new ChangeEntryWidget(this, change));
 		}
 	}
 
@@ -191,14 +191,14 @@ public class ChangesWidget extends BaseWidget
 	 *
 	 * @return List of FileChange that are selected for commit
 	 */
-	public List<FileChange> getSelectedChanges()
+	public List<FileChange> GetSelectedChanges()
 	{
 		List<FileChange> selectedChanges = new ArrayList<>();
-		for (ChangeEntryWidget entry : changesListView.getItems())
+		for (ChangeEntryWidget entry : ChangesListView.getItems())
 		{
-			if (entry.isSelected())
+			if (entry.IsSelected())
 			{
-				selectedChanges.add(entry.getFileChange());
+				selectedChanges.add(entry.GetFileChange());
 			}
 		}
 		return selectedChanges;
@@ -206,10 +206,10 @@ public class ChangesWidget extends BaseWidget
 
 	void ToggleStagedState(FileChange _Change, boolean _ShouldBeStaged, CheckBox _SourceCheckBox)
 	{
-		if (_Change == null || _Change._FilePath() == null)
+		if (_Change == null || _Change.GetFilePath() == null)
 			return;
 
-		Path __RelativePath = GetGitDirTarget().GetRepoRootPath().relativize(_Change._FilePath());
+		Path __RelativePath = GetGitDirTarget().GetRepoRootPath().relativize(_Change.GetFilePath());
 		List<String> __Cmd = new ArrayList<>();
 		if (_ShouldBeStaged)
 		{

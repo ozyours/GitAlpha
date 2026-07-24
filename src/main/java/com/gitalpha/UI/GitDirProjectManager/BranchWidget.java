@@ -25,105 +25,105 @@ class BranchWidget extends BaseWidget
 	private static final double MIN_HEIGHT = 300;
 	private static final String ACTIVE_BRANCH_MARKER = "* ";
 
-	private final TreeView<String> localTreeView;
-	private final TreeView<String> remoteTreeView;
+	private final TreeView<String> LocalTreeView;
+	private final TreeView<String> RemoteTreeView;
 
 	public BranchWidget(GitDir _GitDirTarget, GitDirProjectManager _GitDirProjectManagerTarget)
 	{
 		super(_GitDirTarget, _GitDirProjectManagerTarget);
 
 		// Create and configure the TreeViews for local and remote branches
-		localTreeView = new TreeView<>();
-		remoteTreeView = new TreeView<>();
-		localTreeView.setMinSize(MIN_WIDTH / 2.0, MIN_HEIGHT);
-		remoteTreeView.setMinSize(MIN_WIDTH / 2.0, MIN_HEIGHT);
+		LocalTreeView = new TreeView<>();
+		RemoteTreeView = new TreeView<>();
+		LocalTreeView.setMinSize(MIN_WIDTH / 2.0, MIN_HEIGHT);
+		RemoteTreeView.setMinSize(MIN_WIDTH / 2.0, MIN_HEIGHT);
 
 		// Update the branch list (populate trees)
-		updateBranchList();
+		UpdateBranchList();
 
 		// Set up click handlers
-		setupClickHandlers();
+		SetupClickHandlers();
 
 		// Layout: two vertical boxes side-by-side
-		VBox localBox = new VBox(new Label("Local Branches"), localTreeView);
-		VBox remoteBox = new VBox(new Label("Remote Branches"), remoteTreeView);
+		VBox localBox = new VBox(new Label("Local Branches"), LocalTreeView);
+		VBox remoteBox = new VBox(new Label("Remote Branches"), RemoteTreeView);
 		HBox h = new HBox(localBox, remoteBox);
 		getChildren().add(h);
 	}
 
-	private void setupClickHandlers()
+	private void SetupClickHandlers()
 	{
 		// Context menu for branch operations
 		ContextMenu contextMenu = new ContextMenu();
 
 		MenuItem checkoutItem = new MenuItem("Checkout");
-		checkoutItem.setOnAction(e -> checkoutSelectedBranch());
+		checkoutItem.setOnAction(e -> CheckoutSelectedBranch());
 
 		MenuItem createBranchItem = new MenuItem("Create New Branch...");
-		createBranchItem.setOnAction(e -> createNewBranch());
+		createBranchItem.setOnAction(e -> CreateNewBranch());
 
 		MenuItem deleteBranchItem = new MenuItem("Delete Branch");
-		deleteBranchItem.setOnAction(e -> deleteBranch());
+		deleteBranchItem.setOnAction(e -> DeleteBranch());
 
 		MenuItem pushBranchItem = new MenuItem("Push Branch");
-		pushBranchItem.setOnAction(e -> pushBranch());
+		pushBranchItem.setOnAction(e -> PushBranch());
 
 		MenuItem pullBranchItem = new MenuItem("Pull Branch");
-		pullBranchItem.setOnAction(e -> pullBranch());
+		pullBranchItem.setOnAction(e -> PullBranch());
 
 		contextMenu.getItems().addAll(checkoutItem, new SeparatorMenuItem(), createBranchItem, deleteBranchItem, new SeparatorMenuItem(), pushBranchItem, pullBranchItem);
 
 		// Set up mouse click handlers
 		// Local tree click handlers
-		localTreeView.setOnMouseClicked(event ->
+		LocalTreeView.setOnMouseClicked(event ->
 		{
-			TreeItem<String> sel = localTreeView.getSelectionModel().getSelectedItem();
+			TreeItem<String> sel = LocalTreeView.getSelectionModel().getSelectedItem();
 			if (sel != null)
 			{
 				if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2)
 				{
-					String full = buildFullNameFromItem(sel, false);
+					String full = BuildFullNameFromItem(sel, false);
 					if (full != null)
-						checkoutBranchByName(full);
+						CheckoutBranchByName(full);
 				}
 				else if (event.getButton() == MouseButton.SECONDARY)
 				{
-					contextMenu.show(localTreeView, event.getScreenX(), event.getScreenY());
+					contextMenu.show(LocalTreeView, event.getScreenX(), event.getScreenY());
 				}
 			}
 		});
 
 		// Remote tree click handlers
-		remoteTreeView.setOnMouseClicked(event ->
+		RemoteTreeView.setOnMouseClicked(event ->
 		{
-			TreeItem<String> sel = remoteTreeView.getSelectionModel().getSelectedItem();
+			TreeItem<String> sel = RemoteTreeView.getSelectionModel().getSelectedItem();
 			if (sel != null)
 			{
 				if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2)
 				{
-					String full = buildFullNameFromItem(sel, true);
+					String full = BuildFullNameFromItem(sel, true);
 					if (full != null)
-						checkoutBranchByName(full);
+						CheckoutBranchByName(full);
 				}
 				else if (event.getButton() == MouseButton.SECONDARY)
 				{
-					contextMenu.show(remoteTreeView, event.getScreenX(), event.getScreenY());
+					contextMenu.show(RemoteTreeView, event.getScreenX(), event.getScreenY());
 				}
 			}
 		});
 	}
 
-	private void checkoutSelectedBranch()
+	private void CheckoutSelectedBranch()
 	{
 		// Deprecated: use tree double-click handlers which call checkoutBranchByName
 	}
 
-	private void createNewBranch()
+	private void CreateNewBranch()
 	{
 		// TODO: Show dialog to create new branch
 	}
 
-	private void deleteBranch()
+	private void DeleteBranch()
 	{
 		//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
 		//		if (selectedItem != null)
@@ -133,7 +133,7 @@ class BranchWidget extends BaseWidget
 		//		}
 	}
 
-	private void pushBranch()
+	private void PushBranch()
 	{
 		//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
 		//		if (selectedItem != null)
@@ -143,7 +143,7 @@ class BranchWidget extends BaseWidget
 		//		}
 	}
 
-	private void pullBranch()
+	private void PullBranch()
 	{
 		//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
 		//		if (selectedItem != null)
@@ -153,19 +153,19 @@ class BranchWidget extends BaseWidget
 		//		}
 	}
 
-	public void updateBranchList()
+	public void UpdateBranchList()
 	{
 		System.out.println("Updating branch list");
 		Platform.runLater(() ->
 		{
-			localTreeView.setRoot(null);
-			remoteTreeView.setRoot(null);
-			populateBranchTrees();
+			LocalTreeView.setRoot(null);
+			RemoteTreeView.setRoot(null);
+			PopulateBranchTrees();
 		});
 	}
 
 	// Core population logic (must be called on JavaFX thread)
-	private void populateBranchTrees()
+	private void PopulateBranchTrees()
 	{
 		// Build separate trees for local and remote branches
 		TreeItem<String> localRoot = new TreeItem<>("local-root");
@@ -175,25 +175,25 @@ class BranchWidget extends BaseWidget
 
 		for (GitBranch branch : GetGitDirTarget().GetBranches())
 		{
-			String name = branch._Name();
-			java.util.List<String> ns = branch._Namespace();
-			if (branch._Remote())
+			String name = branch.Name();
+			java.util.List<String> ns = branch.Namespace();
+			if (branch.Remote())
 			{
-				insertIntoTree(remoteRoot, ns, name, true);
+				InsertIntoTree(remoteRoot, ns, name, true);
 			}
 			else
 			{
-				insertIntoTree(localRoot, ns, name, false);
+				InsertIntoTree(localRoot, ns, name, false);
 			}
 		}
 
-		localTreeView.setShowRoot(false);
-		remoteTreeView.setShowRoot(false);
-		localTreeView.setRoot(localRoot);
-		remoteTreeView.setRoot(remoteRoot);
+		LocalTreeView.setShowRoot(false);
+		RemoteTreeView.setShowRoot(false);
+		LocalTreeView.setRoot(localRoot);
+		RemoteTreeView.setRoot(remoteRoot);
 	}
 
-	private void insertIntoTree(TreeItem<String> root, java.util.List<String> namespace, String name, boolean isRemote)
+	private void InsertIntoTree(TreeItem<String> root, java.util.List<String> namespace, String name, boolean isRemote)
 	{
 		TreeItem<String> cur = root;
 		for (String seg : namespace)
@@ -228,7 +228,7 @@ class BranchWidget extends BaseWidget
 	}
 
 	// Build full branch name (namespace/name) from a selected TreeItem; returns null if selection is a namespace node
-	private String buildFullNameFromItem(TreeItem<String> item, boolean isRemote)
+	private String BuildFullNameFromItem(TreeItem<String> item, boolean isRemote)
 	{
 		if (item == null)
 			return null;
@@ -252,7 +252,7 @@ class BranchWidget extends BaseWidget
 		return String.join("/", parts);
 	}
 
-	private void checkoutBranchByName(String fullName)
+	private void CheckoutBranchByName(String fullName)
 	{
 		GetGitDirTarget().ChangeBranch(fullName).thenRun(() ->
 		{

@@ -19,8 +19,8 @@ public class GirDirEntryUI extends StackPane
         GitDirTarget = _GitDir;
         TabButton = _TabButton;
 
-        btn_Open = new Button("Open");
-        btn_Open.setOnMouseClicked(new EventHandler<MouseEvent>()
+        BtnOpen = new Button("Open");
+        BtnOpen.setOnMouseClicked(new EventHandler<MouseEvent>()
         {
             @Override
             public void handle(MouseEvent mouseEvent)
@@ -43,11 +43,11 @@ public class GirDirEntryUI extends StackPane
 
         getChildren().add(
                 new VBox(new Text(GitDirTarget.GetRepoRootPath().toString()),
-                        btn_Open
+                        BtnOpen
                 ));
     }
 
     private GitDir GitDirTarget;
     private GitDirTabButton TabButton;
-    private Button btn_Open;
+    private Button BtnOpen;
 }

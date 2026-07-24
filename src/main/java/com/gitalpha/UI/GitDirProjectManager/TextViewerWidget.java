@@ -71,9 +71,9 @@ public class TextViewerWidget extends BaseWidget
 	) {}
 
 	/** Wraps the content container for scrolling */
-	private final ScrollPane scrollPane;
+	private final ScrollPane ScrollPane;
 	/** Holds the diff line rows (HBoxes) */
-	private final VBox contentContainer;
+	private final VBox ContentContainer;
 	/** The file changes whose diff is currently displayed; null if none */
 	private FileChange FileChangeTarget = null;
 
@@ -81,10 +81,10 @@ public class TextViewerWidget extends BaseWidget
 	{
 		super(_GitDirTarget, _GitDirProjectManagerTarget);
 
-		contentContainer = new VBox();
-		scrollPane = new ScrollPane(contentContainer);
-		scrollPane.setFitToWidth(true);
-		getChildren().add(scrollPane);
+		ContentContainer = new VBox();
+		ScrollPane = new ScrollPane(ContentContainer);
+		ScrollPane.setFitToWidth(true);
+		getChildren().add(ScrollPane);
 	}
 
 	// ------------------------------------------------------------------
@@ -97,7 +97,7 @@ public class TextViewerWidget extends BaseWidget
 	 * original character positions so that tokens can be stitched back
 	 * together without loss.
 	 */
-	private static List<String> tokenize(String text)
+	private static List<String> Tokenize(String text)
 	{
 		List<String> tokens = new ArrayList<>();
 		Matcher m = TOKEN_PATTERN.matcher(text);
@@ -117,7 +117,7 @@ public class TextViewerWidget extends BaseWidget
 	 * when the token was <em>not</em> part of the longest common subsequence
 	 * (i.e. it was actually added or removed).
 	 */
-	private static IntraLineDiff computeIntraLineDiff(String oldText, String newText)
+	private static IntraLineDiff ComputeIntraLineDiff(String oldText, String newText)
 	{
 		// ---- fast-path: identical texts (nothing changed inside the line) ----
 		if (oldText.equals(newText))
@@ -126,8 +126,8 @@ public class TextViewerWidget extends BaseWidget
 				List.of(new StyledSegment(newText, false))
 			);
 
-		List<String> oldTokens = tokenize(oldText);
-		List<String> newTokens = tokenize(newText);
+		List<String> oldTokens = Tokenize(oldText);
+		List<String> newTokens = Tokenize(newText);
 
 		// ---- one side empty -> everything on the other side is "changed" ----
 		if (oldTokens.isEmpty() && newTokens.isEmpty())
@@ -183,8 +183,8 @@ public class TextViewerWidget extends BaseWidget
 
 		// ---- build segment lists from the LCS flags ----
 		return new IntraLineDiff(
-			buildSegments(oldTokens, oldInLCS),
-			buildSegments(newTokens, newInLCS)
+			BuildSegments(oldTokens, oldInLCS),
+			BuildSegments(newTokens, newInLCS)
 		);
 	}
 
@@ -193,7 +193,7 @@ public class TextViewerWidget extends BaseWidget
 	 * into a list of {@link StyledSegment}s, collapsing consecutive tokens
 	 * with the same <em>highlighted</em> state into a single segment.
 	 */
-	private static List<StyledSegment> buildSegments(List<String> tokens, boolean[] inLCS)
+	private static List<StyledSegment> BuildSegments(List<String> tokens, boolean[] inLCS)
 	{
 		List<StyledSegment> segments = new ArrayList<>();
 		StringBuilder buf = new StringBuilder();
@@ -243,7 +243,7 @@ public class TextViewerWidget extends BaseWidget
 	public void SetFileChange(FileChange _FileChangeTarget)
 	{
 		FileChangeTarget = _FileChangeTarget;
-		contentContainer.getChildren().clear();
+		ContentContainer.getChildren().clear();
 
 		if (FileChangeTarget == null)
 			return;
@@ -254,12 +254,12 @@ public class TextViewerWidget extends BaseWidget
 		loadingPane.getChildren().add(loadingText);
 		// Fill the viewport height so the StackPane centers the text vertically
 		loadingPane.prefHeightProperty().bind(
-			scrollPane.viewportBoundsProperty()
-				.map(b -> (b != null) ? b.getHeight() : scrollPane.getHeight())
+			ScrollPane.viewportBoundsProperty()
+				.map(b -> (b != null) ? b.getHeight() : ScrollPane.getHeight())
 		);
-		contentContainer.getChildren().add(loadingPane);
+		ContentContainer.getChildren().add(loadingPane);
 
-		FileChangeTarget.getDiffLines()
+		FileChangeTarget.GetDiffLines()
 			.thenAcceptAsync(diffLines ->
 			{
 				// (runs on ForkJoinPool or cached-executor thread)
@@ -267,7 +267,7 @@ public class TextViewerWidget extends BaseWidget
 					return;							// stale — user switched to another file
 
 				// ---- Phase 1: pair + LCS (no JavaFX, pure data) ----
-				List<PreparedRow> prepared = prepareDiffRows(diffLines);
+				List<PreparedRow> prepared = PrepareDiffRows(diffLines);
 
 				// ---- Phase 2: single flush to JavaFX thread for node creation ----
 				Platform.runLater(() ->
@@ -275,7 +275,7 @@ public class TextViewerWidget extends BaseWidget
 					if (FileChangeTarget != _FileChangeTarget)
 						return;						// stale by the time we got to FX
 
-					renderPreparedRows(prepared);
+					RenderPreparedRows(prepared);
 				});
 			})
 			.exceptionally(ex ->
@@ -284,10 +284,10 @@ public class TextViewerWidget extends BaseWidget
 				{
 					if (FileChangeTarget == _FileChangeTarget)
 					{
-						contentContainer.getChildren().clear();
+						ContentContainer.getChildren().clear();
 						Text errorText = new Text("Error: " + ex.getCause().getMessage());
 						errorText.setFont(MONO_FONT);
-						contentContainer.getChildren().add(errorText);
+						ContentContainer.getChildren().add(errorText);
 					}
 				});
 				return null;
@@ -303,7 +303,7 @@ public class TextViewerWidget extends BaseWidget
 	 * to call from any thread (and is intentionally invoked off the JavaFX thread
 	 * via {@link java.util.concurrent.CompletableFuture#thenAcceptAsync}).
 	 */
-	private static List<PreparedRow> prepareDiffRows(List<FileChange.LineChange> diffLines)
+	private static List<PreparedRow> PrepareDiffRows(List<FileChange.LineChange> diffLines)
 	{
 		List<PreparedRow> result = new ArrayList<>();
 
@@ -330,7 +330,7 @@ public class TextViewerWidget extends BaseWidget
 				{
 					// Pair the oldest pending removal with this addition
 					FileChange.LineChange removedLine = pendingRemovals.removeFirst();
-					IntraLineDiff diff = computeIntraLineDiff(removedLine.text(), line.text());
+					IntraLineDiff diff = ComputeIntraLineDiff(removedLine.text(), line.text());
 					result.add(new PreparedRow(
 						removedLine.prefix(), removedLine.oldLineNumber(), removedLine.newLineNumber(),
 						removedLine.text(), diff.oldSegments()));
@@ -379,9 +379,9 @@ public class TextViewerWidget extends BaseWidget
 	 * <p>
 	 * <strong>Must be called on the JavaFX Application Thread.</strong>
 	 */
-	private void renderPreparedRows(List<PreparedRow> prepared)
+	private void RenderPreparedRows(List<PreparedRow> prepared)
 	{
-		contentContainer.getChildren().clear();
+		ContentContainer.getChildren().clear();
 
 		if (prepared.isEmpty())
 			return;
@@ -400,7 +400,7 @@ public class TextViewerWidget extends BaseWidget
 		String emptyNum = " ".repeat(numWidth);
 
 		for (var row : prepared)
-			renderDiffRow(row, numFormat, emptyNum);
+			RenderDiffRow(row, numFormat, emptyNum);
 	}
 
 	/**
@@ -411,7 +411,7 @@ public class TextViewerWidget extends BaseWidget
 	 * @param numFormat format string for line numbers
 	 * @param emptyNum  blank placeholder when a line number is absent
 	 */
-	private void renderDiffRow(PreparedRow row, String numFormat, String emptyNum)
+	private void RenderDiffRow(PreparedRow row, String numFormat, String emptyNum)
 	{
 		HBox rowBox = new HBox();
 		rowBox.setMaxWidth(Double.MAX_VALUE);
@@ -462,10 +462,10 @@ public class TextViewerWidget extends BaseWidget
 			prefixText.setFill(Color.GRAY);
 
 		// Content — either intra-line segments or plain text
-		HBox content = createContentNode(row.prefix(), row.text(), row.intraSegments());
+		HBox content = CreateContentNode(row.prefix(), row.text(), row.intraSegments());
 
 		rowBox.getChildren().addAll(bar, oldNum, newNum, prefixText, content);
-		contentContainer.getChildren().add(rowBox);
+		ContentContainer.getChildren().add(rowBox);
 	}
 
 	/**
@@ -480,7 +480,7 @@ public class TextViewerWidget extends BaseWidget
 	 * @param text          the raw line text
 	 * @param intraSegments intra-line styled segments (nullable)
 	 */
-	private static HBox createContentNode(char prefix, String text, List<StyledSegment> intraSegments)
+	private static HBox CreateContentNode(char prefix, String text, List<StyledSegment> intraSegments)
 	{
 		boolean added = prefix == '+';
 		boolean removed = prefix == '-';

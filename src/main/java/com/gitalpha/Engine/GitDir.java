@@ -241,9 +241,9 @@ public class GitDir implements ISerializable
 				while (__NewIt.hasNext())
 				{
 					var __New = __NewIt.next();
-					if (__Existing._FilePath().equals(__New._FilePath())
-						&& __Existing._Scope() == __New._Scope()
-						&& __Existing._Status() == __New._Status())
+					if (__Existing.GetFilePath().equals(__New.GetFilePath())
+						&& __Existing.GetScope() == __New.GetScope()
+						&& __Existing.GetStatus() == __New.GetStatus())
 					{
 						__NewIt.remove();
 						__Found = true;

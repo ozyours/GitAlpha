@@ -22,7 +22,7 @@ public class AlphaEngine
 
 	public AlphaEngine()
 	{
-		AddOpenGitDirEvent(new OpenGitDirEvent()
+		AddIOpenGitDirEvent(new IOpenGitDirEvent()
 		{
 			@Override
 			public void Event(GitDir _GitDirTarget)
@@ -51,10 +51,10 @@ public class AlphaEngine
 		return OpenGitDirList;
 	}
 
-	private final List<WeakReference<OpenGitDirEvent>> OpenGitDirEventList = new ArrayList<>();
+	private final List<WeakReference<IOpenGitDirEvent>> OpenGitDirEventList = new ArrayList<>();
 
-	private final List<WeakReference<CloseGitDirEvent>> CloseGitDirEventList = new ArrayList<>();
-	private final List<WeakReference<RefreshGitDirEvent>> RefreshGitDirEventList = new ArrayList<>();
+	private final List<WeakReference<ICloseGitDirEvent>> CloseGitDirEventList = new ArrayList<>();
+	private final List<WeakReference<IRefreshGitDirEvent>> RefreshGitDirEventList = new ArrayList<>();
 	private final Path SessionFilePath = Path.of(System.getProperty("user.home"), ".gitalpha", "session.json");
 	private String LastSessionRootHash = "";
 
@@ -74,7 +74,7 @@ public class AlphaEngine
 		var _Probe = new GitDir(_GitPath);
 		OpenGitDirList.GetGitDirs().add(_Probe);
 		RecentGitDirList.AddGitDir(_Probe);
-		BroadcastOpenGitDirEvent(_Probe);
+		BroadcastIOpenGitDirEvent(_Probe);
 		return _Probe;
 	}
 
@@ -89,7 +89,7 @@ public class AlphaEngine
 		if (__Index >= 0)
 		{
 			var __GitDir = OpenGitDirList.GetGitDirs().remove(__Index);
-			BroadcastCloseGitDirEvent(__GitDir);
+			BroadcastICloseGitDirEvent(__GitDir);
 		}
 	}
 
@@ -198,12 +198,12 @@ public class AlphaEngine
 		return -1;
 	}
 
-	public void AddOpenGitDirEvent(OpenGitDirEvent _Event)
+	public void AddIOpenGitDirEvent(IOpenGitDirEvent _Event)
 	{
 		OpenGitDirEventList.add(new WeakReference<>(_Event));
 	}
 
-	public void RemoveOpenGitDirEvent(OpenGitDirEvent _Event)
+	public void RemoveIOpenGitDirEvent(IOpenGitDirEvent _Event)
 	{
 		int i = 0;
 		while (i < OpenGitDirEventList.size())
@@ -217,12 +217,12 @@ public class AlphaEngine
 		}
 	}
 
-	public void AddCloseGitDirEvent(CloseGitDirEvent _Event)
+	public void AddICloseGitDirEvent(ICloseGitDirEvent _Event)
 	{
 		CloseGitDirEventList.add(new WeakReference<>(_Event));
 	}
 
-	public void RemoveCloseGitDirEvent(CloseGitDirEvent _Event)
+	public void RemoveICloseGitDirEvent(ICloseGitDirEvent _Event)
 	{
 		int i = 0;
 		while (i < CloseGitDirEventList.size())
@@ -236,12 +236,12 @@ public class AlphaEngine
 		}
 	}
 
-	public void AddRefreshGitDirEvent(RefreshGitDirEvent _Event)
+	public void AddIRefreshGitDirEvent(IRefreshGitDirEvent _Event)
 	{
 		RefreshGitDirEventList.add(new WeakReference<>(_Event));
 	}
 
-	public void RemoveRefreshGitDirEvent(RefreshGitDirEvent _Event)
+	public void RemoveIRefreshGitDirEvent(IRefreshGitDirEvent _Event)
 	{
 		int i = 0;
 		while (i < RefreshGitDirEventList.size())
@@ -258,10 +258,10 @@ public class AlphaEngine
 	public void AttemptSaveAndBroadcastRefresh(String _Reason, GitDir _GitDirTarget)
 	{
 		SaveSession();
-		BroadcastRefreshGitDirEvent(_GitDirTarget, _Reason);
+		BroadcastIRefreshGitDirEvent(_GitDirTarget, _Reason);
 	}
 
-	private void BroadcastOpenGitDirEvent(GitDir _GitDirTarget)
+	private void BroadcastIOpenGitDirEvent(GitDir _GitDirTarget)
 	{
 		int i = 0;
 		while (i < OpenGitDirEventList.size())
@@ -298,7 +298,7 @@ public class AlphaEngine
 		}
 	}
 
-	private void BroadcastCloseGitDirEvent(GitDir _GitDirTarget)
+	private void BroadcastICloseGitDirEvent(GitDir _GitDirTarget)
 	{
 		int i = 0;
 		while (i < CloseGitDirEventList.size())
@@ -316,7 +316,7 @@ public class AlphaEngine
 		}
 	}
 
-	private void BroadcastRefreshGitDirEvent(GitDir _GitDirTarget, String _Reason)
+	private void BroadcastIRefreshGitDirEvent(GitDir _GitDirTarget, String _Reason)
 	{
 		int i = 0;
 		while (i < RefreshGitDirEventList.size())

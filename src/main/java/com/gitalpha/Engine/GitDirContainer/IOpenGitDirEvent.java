@@ -2,7 +2,7 @@ package com.gitalpha.Engine.GitDirContainer;
 
 import com.gitalpha.Engine.GitDir;
 
-public interface CloseGitDirEvent
+public interface IOpenGitDirEvent
 {
-	void Event(GitDir _GitDirTarget);
+    void Event(GitDir _GitDirTarget);
 }

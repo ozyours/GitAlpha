@@ -2,7 +2,7 @@ package com.gitalpha.UI.GitDirProjectManager;
 
 import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
-import com.gitalpha.Engine.GitDirContainer.RefreshGitDirEvent;
+import com.gitalpha.Engine.GitDirContainer.IRefreshGitDirEvent;
 import com.gitalpha.Type.FileChange;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
@@ -57,7 +57,7 @@ public class GitDirProjectManager extends StackPane
 				RefreshGitDirProjectManager();
 			}
 		};
-		AlphaEngine.Instance.AddRefreshGitDirEvent(RefreshGitDirEventListener);
+		AlphaEngine.Instance.AddIRefreshGitDirEvent(RefreshGitDirEventListener);
 
 		RefreshGitDirProjectManager();
 	}
@@ -69,7 +69,7 @@ public class GitDirProjectManager extends StackPane
 	private final ChangesWidget ChangesWidgetInstance;
 	private final CommitWidget CommitWidgetInstance;
 	private final TextViewerWidget TextViewerWidgetInstance;
-	private final RefreshGitDirEvent RefreshGitDirEventListener;
+	private final IRefreshGitDirEvent RefreshGitDirEventListener;
 	private boolean Disposed = false;
 
 	public void ReadFileChange(FileChange _FileChange)
@@ -91,8 +91,8 @@ public class GitDirProjectManager extends StackPane
 					if (Disposed)
 						return;
 
-					ChangesWidgetInstance.updateChanges();
-					BranchWidgetInstance.updateBranchList();
+					ChangesWidgetInstance.UpdateChanges();
+					BranchWidgetInstance.UpdateBranchList();
 					TextViewerWidgetInstance.RefreshCurrentFileChange();
 				});
 			});
@@ -111,6 +111,6 @@ public class GitDirProjectManager extends StackPane
 			return;
 
 		Disposed = true;
-		AlphaEngine.Instance.RemoveRefreshGitDirEvent(RefreshGitDirEventListener);
+		AlphaEngine.Instance.RemoveIRefreshGitDirEvent(RefreshGitDirEventListener);
 	}
 }

@@ -29,11 +29,11 @@ public class FileChange
 		Owner = _Owner;
 	}
 
-	public Path _FilePath() { return FilePath; }
-	public EFileChangeStatus _Status() { return Status; }
-	public EFileChangeScope _Scope() { return Scope; }
+	public Path GetFilePath() { return FilePath; }
+	public EFileChangeStatus GetStatus() { return Status; }
+	public EFileChangeScope GetScope() { return Scope; }
 
-	public CompletableFuture<List<LineChange>> getDiffLines()
+	public CompletableFuture<List<LineChange>> GetDiffLines()
 	{
 		return CompletableFuture.supplyAsync(() ->
 		{
@@ -107,7 +107,7 @@ public class FileChange
 					diff = __DiffRes.getValue();
 				}
 
-				var diffLines = parseDiffPerFile(diff);
+				var diffLines = ParseDiffPerFile(diff);
 
 				if (fileExists)
 				{
@@ -128,7 +128,7 @@ public class FileChange
 		});
 	}
 
-	private List<LineChange> parseDiffPerFile(String diffChunk)
+	private List<LineChange> ParseDiffPerFile(String diffChunk)
 	{
 		var out = new ArrayList<LineChange>();
 		if (diffChunk == null || diffChunk.isBlank())
