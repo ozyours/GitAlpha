@@ -3,7 +3,7 @@ package com.gitalpha.UI.GitDirTab;
 import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.UI.AlphaUI;
-import com.gitalpha.UI.GitDirProjectManager.GitDirProjectManager;
+import com.gitalpha.UI.GitDirProjectManager.GitDirProjectManagerWidget;
 import com.gitalpha.UI.IObject;
 import javafx.application.Platform;
 import javafx.scene.control.Tab;
@@ -37,7 +37,7 @@ public class GitDirTabButton extends Tab implements IObject
 	private Object Parent;
 	private final AlphaUI AlphaUIInstance;
 	private GitDir GitDirTarget;
-	private GitDirProjectManager ProjectManagerInstance = null;
+	private GitDirProjectManagerWidget ProjectManagerInstance = null;
 
 	private String GetGitDirTabName()
 	{
@@ -62,7 +62,7 @@ public class GitDirTabButton extends Tab implements IObject
 		UpdateTabLabel();
 		Platform.runLater(() ->
 		{
-			ProjectManagerInstance = new GitDirProjectManager(this, GitDirTarget);
+			ProjectManagerInstance = new GitDirProjectManagerWidget(this, GitDirTarget);
 			setContent(new StackPane(ProjectManagerInstance));
 			AlphaUIInstance.BindOpenProjectTab(GitDirTarget, this);
 			getTabPane().requestLayout();

@@ -10,9 +10,9 @@ import javafx.scene.layout.*;
 
 import java.util.Objects;
 
-public class GitDirProjectManager extends StackPane
+public class GitDirProjectManagerWidget extends StackPane
 {
-	public GitDirProjectManager(GitDirTabButton _TabButton, GitDir _GitDir)
+	public GitDirProjectManagerWidget(GitDirTabButton _TabButton, GitDir _GitDir)
 	{
 		super();
 
@@ -54,12 +54,12 @@ public class GitDirProjectManager extends StackPane
 		{
 			if (_GitDirTarget == null || Objects.equals(_GitDirTarget.GetGitDirPath(), GitDirTarget.GetGitDirPath()))
 			{
-				RefreshGitDirProjectManager();
+				RefreshGitDirProjectManagerWidget();
 			}
 		};
 		AlphaEngine.Instance.AddIRefreshGitDirEvent(RefreshGitDirEventListener);
 
-		RefreshGitDirProjectManager();
+		RefreshGitDirProjectManagerWidget();
 	}
 
 	public final GitDirTabButton TabButton;
@@ -77,7 +77,7 @@ public class GitDirProjectManager extends StackPane
 		TextViewerWidgetInstance.SetFileChange(_FileChange);
 	}
 
-	public void RefreshGitDirProjectManager()
+	public void RefreshGitDirProjectManagerWidget()
 	{
 		if (Disposed)
 			return;

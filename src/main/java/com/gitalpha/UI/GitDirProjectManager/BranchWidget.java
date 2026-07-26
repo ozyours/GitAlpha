@@ -1,6 +1,7 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
 import com.gitalpha.Engine.AlphaEngine;
+import com.gitalpha.Engine.Debug;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.GitBranch;
 import javafx.application.Platform;
@@ -28,9 +29,9 @@ class BranchWidget extends BaseWidget
 	private final TreeView<String> LocalTreeView;
 	private final TreeView<String> RemoteTreeView;
 
-	public BranchWidget(GitDir _GitDirTarget, GitDirProjectManager _GitDirProjectManagerTarget)
+	public BranchWidget(GitDir _GitDirTarget, GitDirProjectManagerWidget _GitDirProjectManagerWidgetTarget)
 	{
-		super(_GitDirTarget, _GitDirProjectManagerTarget);
+		super(_GitDirTarget, _GitDirProjectManagerWidgetTarget);
 
 		// Create and configure the TreeViews for local and remote branches
 		LocalTreeView = new TreeView<>();
@@ -155,7 +156,7 @@ class BranchWidget extends BaseWidget
 
 	public void UpdateBranchList()
 	{
-		System.out.println("Updating branch list");
+		Debug.Log(Debug.BranchesCategory, "Updating branch list");
 		Platform.runLater(() ->
 		{
 			LocalTreeView.setRoot(null);

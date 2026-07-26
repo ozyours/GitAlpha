@@ -5,8 +5,8 @@ import javafx.scene.layout.StackPane;
 
 public class CommitWidget extends BaseWidget
 {
-	public CommitWidget(GitDir _GitDirTarget, GitDirProjectManager _GitDirProjectManagerTarget)
+	public CommitWidget(GitDir _GitDirTarget, GitDirProjectManagerWidget _GitDirProjectManagerWidgetTarget)
 	{
-		super(_GitDirTarget, _GitDirProjectManagerTarget);
+		super(_GitDirTarget, _GitDirProjectManagerWidgetTarget);
 	}
 }

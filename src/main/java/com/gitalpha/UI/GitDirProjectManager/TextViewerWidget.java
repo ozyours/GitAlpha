@@ -77,9 +77,9 @@ public class TextViewerWidget extends BaseWidget
 	/** The file changes whose diff is currently displayed; null if none */
 	private FileChange FileChangeTarget = null;
 
-	public TextViewerWidget(GitDir _GitDirTarget, GitDirProjectManager _GitDirProjectManagerTarget)
+	public TextViewerWidget(GitDir _GitDirTarget, GitDirProjectManagerWidget _GitDirProjectManagerWidgetTarget)
 	{
-		super(_GitDirTarget, _GitDirProjectManagerTarget);
+		super(_GitDirTarget, _GitDirProjectManagerWidgetTarget);
 
 		ContentContainer = new VBox();
 		ScrollPane = new ScrollPane(ContentContainer);

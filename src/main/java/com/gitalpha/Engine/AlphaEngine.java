@@ -58,6 +58,38 @@ public class AlphaEngine
 	private final Path SessionFilePath = Path.of(System.getProperty("user.home"), ".gitalpha", "session.json");
 	private String LastSessionRootHash = "";
 
+	/** Persisted window bounds; -1,-1 means "use platform default position" */
+	private int WindowX = -1;
+	private int WindowY = -1;
+	private int WindowWidth = 800;
+	private int WindowHeight = 600;
+	private boolean WindowMaximized = false;
+
+	private static final String WINDOW_X_KEY = "WindowX";
+	private static final String WINDOW_Y_KEY = "WindowY";
+	private static final String WINDOW_WIDTH_KEY = "WindowWidth";
+	private static final String WINDOW_HEIGHT_KEY = "WindowHeight";
+	private static final String WINDOW_MAXIMIZED_KEY = "WindowMaximized";
+
+	public int GetWindowX() { return WindowX; }
+	public int GetWindowY() { return WindowY; }
+	public int GetWindowWidth() { return WindowWidth; }
+	public int GetWindowHeight() { return WindowHeight; }
+	public boolean GetWindowMaximized() { return WindowMaximized; }
+
+	public void SetWindowBounds(int _X, int _Y, int _Width, int _Height)
+	{
+		WindowX = _X;
+		WindowY = _Y;
+		WindowWidth = _Width;
+		WindowHeight = _Height;
+	}
+
+	public void SetWindowMaximized(boolean _Maximized)
+	{
+		WindowMaximized = _Maximized;
+	}
+
 	public GitDir TryOpenGitDir(Path _ProjectPath)
 	{
 		if (_ProjectPath == null)
@@ -105,6 +137,14 @@ public class AlphaEngine
 			JSONObject __Root = new JSONObject();
 			__Root.put("OpenGitDirList", OpenGitDirList.Serialize());
 			__Root.put("RecentGitDirList", RecentGitDirList.Serialize());
+			// Persist window bounds (only write position when explicitly set)
+			if (WindowX >= 0)
+				__Root.put(WINDOW_X_KEY, WindowX);
+			if (WindowY >= 0)
+				__Root.put(WINDOW_Y_KEY, WindowY);
+			__Root.put(WINDOW_WIDTH_KEY, WindowWidth);
+			__Root.put(WINDOW_HEIGHT_KEY, WindowHeight);
+			__Root.put(WINDOW_MAXIMIZED_KEY, WindowMaximized);
 			String __RootString = __Root.toString(2);
 			String __NewHash = ComputeSessionHash(__RootString);
 
@@ -147,6 +187,18 @@ public class AlphaEngine
 				RecentGitDirList.Deserialize(__Root.getJSONObject("RecentGitDirList"));
 				SanitizeGitDirContainer(RecentGitDirList);
 			}
+
+			// Restore window bounds
+			if (__Root.has(WINDOW_X_KEY))
+				WindowX = __Root.getInt(WINDOW_X_KEY);
+			if (__Root.has(WINDOW_Y_KEY))
+				WindowY = __Root.getInt(WINDOW_Y_KEY);
+			if (__Root.has(WINDOW_WIDTH_KEY))
+				WindowWidth = __Root.getInt(WINDOW_WIDTH_KEY);
+			if (__Root.has(WINDOW_HEIGHT_KEY))
+				WindowHeight = __Root.getInt(WINDOW_HEIGHT_KEY);
+			if (__Root.has(WINDOW_MAXIMIZED_KEY))
+				WindowMaximized = __Root.getBoolean(WINDOW_MAXIMIZED_KEY);
 		}
 		catch (Exception __Ex)
 		{

@@ -14,6 +14,7 @@ import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
+import javafx.scene.text.TextFlow;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,14 +50,21 @@ class ChangeEntryWidget extends HBox implements IObject
 
 		// Create text showing file status and path
 		Text statusText = CreateStatusText(FileChangeTarget.GetStatus());
-		Text pathText = new Text(FileChangeTarget.GetFilePath().getFileName().toString());
+
+		// Show full relative path: directory portion in gray, filename in normal color
+		Path __RelativePath = ChangesWidget.GetGitDirTarget().GetRepoRootPath().relativize(FileChangeTarget.GetFilePath());
+		Path __ParentDir = __RelativePath.getParent();
+		Text dirText = new Text(__ParentDir != null ? __ParentDir.toString() + "\\" : "");
+		dirText.setFill(Color.GRAY);
+		Text fileText = new Text(__RelativePath.getFileName().toString());
+		TextFlow pathFlow = new TextFlow(dirText, fileText);
 
 		// Add components to the entry
-		getChildren().addAll(CommitCheckBox, statusText, pathText);
+		getChildren().addAll(CommitCheckBox, statusText, pathFlow);
 
 		setOnMouseClicked(mouseEvent ->
 		{
-			ChangesWidget.GetGitDirProjectManagerTarget().ReadFileChange(FileChangeTarget);
+			ChangesWidget.GetGitDirProjectManagerWidgetTarget().ReadFileChange(FileChangeTarget);
 		});
 	}
 
@@ -123,9 +131,9 @@ public class ChangesWidget extends BaseWidget
 
 	private final ListView<ChangeEntryWidget> ChangesListView;
 
-	public ChangesWidget(GitDir _GitDirTarget, GitDirProjectManager _GitDirProjectManagerTarget)
+	public ChangesWidget(GitDir _GitDirTarget, GitDirProjectManagerWidget _GitDirProjectManagerWidgetTarget)
 	{
-		super(_GitDirTarget, _GitDirProjectManagerTarget);
+		super(_GitDirTarget, _GitDirProjectManagerWidgetTarget);
 
 		// Create and configure ListView
 		ChangesListView = new ListView<>();
@@ -147,14 +155,14 @@ public class ChangesWidget extends BaseWidget
 				if (entry.IsHeader)
 				{
 					ChangesListView.getSelectionModel().clearSelection();
-					GetGitDirProjectManagerTarget().ReadFileChange(null);
+					GetGitDirProjectManagerWidgetTarget().ReadFileChange(null);
 				}
 			}
 			else
 			{
 				// Click on empty space in the ListView -> clear the diff view and selection
 				ChangesListView.getSelectionModel().clearSelection();
-				GetGitDirProjectManagerTarget().ReadFileChange(null);
+				GetGitDirProjectManagerWidgetTarget().ReadFileChange(null);
 			}
 		});
 	}

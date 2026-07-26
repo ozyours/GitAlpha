@@ -171,8 +171,8 @@ public class GitDir implements ISerializable
 						throw new IOException("git branch list failed: " + __Res.getValue());
 					var __String = __Res.getValue();
 					var __List = __String.split("\n");
-					System.out.printf("Branches: %d\n", __List.length);
-					System.out.println(__String);
+					Debug.Log(Debug.BranchesCategory, "Branches: %d\n", __List.length);
+					Debug.Log(Debug.BranchesCategory, __String);
 					Branches.clear(); // Clear existing branches
 
 					for (var e : __List)
@@ -223,7 +223,7 @@ public class GitDir implements ISerializable
 					e.printStackTrace();
 					throw new RuntimeException(e);
 				}
-				System.out.printf("Branches: %d\n", Branches.size());
+				Debug.Log(Debug.BranchesCategory, "Branches: %d\n", Branches.size());
 			}
 
 			// Collect new changes into a temp list
