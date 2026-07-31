@@ -255,21 +255,19 @@ class BranchWidget extends BaseWidget
 
 	private void CheckoutBranchByName(String fullName)
 	{
-		GetGitDirTarget().ChangeBranch(fullName).thenRun(() ->
+		GetGitDirTarget().ChangeBranch(fullName, (__Ok, __Err, __Dir) ->
 		{
-			AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("git-operation-completed", GetGitDirTarget());
-		}).exceptionally((ex) ->
-		{
-			ex.printStackTrace();
-			Platform.runLater(() ->
+			if (!__Ok)
 			{
-				Alert alert = new Alert(Alert.AlertType.ERROR);
-				alert.setTitle("Checkout Failed");
-				alert.setHeaderText("Failed to checkout branch");
-				alert.setContentText(ex.getMessage());
-				alert.showAndWait();
-			});
-			return null;
+				Platform.runLater(() ->
+				{
+					Alert alert = new Alert(Alert.AlertType.ERROR);
+					alert.setTitle("Checkout Failed");
+					alert.setHeaderText("Failed to checkout branch");
+					alert.setContentText(__Err);
+					alert.showAndWait();
+				});
+			}
 		});
 	}
 }

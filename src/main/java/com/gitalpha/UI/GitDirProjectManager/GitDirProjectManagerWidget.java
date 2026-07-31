@@ -82,27 +82,18 @@ public class GitDirProjectManagerWidget extends StackPane
 		if (Disposed)
 			return;
 
-		try
+		GitDirTarget.Refresh((__Ok, __Err, __Dir) ->
 		{
-			GitDirTarget.Refresh().thenRun(() ->
+			Platform.runLater(() ->
 			{
-				Platform.runLater(() ->
-				{
-					if (Disposed)
-						return;
+				if (Disposed)
+					return;
 
-					ChangesWidgetInstance.UpdateChanges();
-					BranchWidgetInstance.UpdateBranchList();
-					TextViewerWidgetInstance.RefreshCurrentFileChange();
-				});
+				ChangesWidgetInstance.UpdateChanges();
+				BranchWidgetInstance.UpdateBranchList();
+				TextViewerWidgetInstance.RefreshCurrentFileChange();
 			});
-		}
-		catch (RuntimeException __Ex)
-		{
-			// Ignore overlapping refresh requests while an existing refresh is running.
-			if (!"GitDir is busy".equals(__Ex.getMessage()))
-				throw __Ex;
-		}
+		});
 	}
 
 	public void Dispose()

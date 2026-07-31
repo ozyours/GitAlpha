@@ -1,6 +1,6 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
-import com.gitalpha.Engine.AlphaEngine;
+import com.gitalpha.Engine.ERefreshPolicy;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.EFileChangeStatus;
 import com.gitalpha.Type.EFileChangeScope;
@@ -169,29 +169,80 @@ public class ChangesWidget extends BaseWidget
 
 	public void UpdateChanges()
 	{
-		ChangesListView.getItems().clear();
-
-		List<FileChange> staged = new ArrayList<>();
-		List<FileChange> unstaged = new ArrayList<>();
-		for (FileChange change : GetGitDirTarget().GetChangedFiles())
+		// Partition new file changes by scope.
+		List<FileChange> __NewStaged = new ArrayList<>();
+		List<FileChange> __NewUnstaged = new ArrayList<>();
+		for (FileChange __Change : GetGitDirTarget().GetChangedFiles())
 		{
-			if (change.GetScope() == EFileChangeScope.STAGED)
-				staged.add(change);
+			if (__Change.GetScope() == EFileChangeScope.STAGED)
+				__NewStaged.add(__Change);
 			else
-				unstaged.add(change);
+				__NewUnstaged.add(__Change);
 		}
 
-		ChangesListView.getItems().add(new ChangeEntryWidget("Staged"));
-		for (FileChange change : staged)
+		// Collect existing file entry widgets from the current list, grouped by scope.
+		List<ChangeEntryWidget> __OldStaged = new ArrayList<>();
+		List<ChangeEntryWidget> __OldUnstaged = new ArrayList<>();
+		for (ChangeEntryWidget __Entry : ChangesListView.getItems())
 		{
-			ChangesListView.getItems().add(new ChangeEntryWidget(this, change));
+			if (!__Entry.IsHeader && __Entry.GetFileChange() != null)
+			{
+				if (__Entry.GetFileChange().GetScope() == EFileChangeScope.STAGED)
+					__OldStaged.add(__Entry);
+				else
+					__OldUnstaged.add(__Entry);
+			}
 		}
 
-		ChangesListView.getItems().add(new ChangeEntryWidget("Unstaged"));
-		for (FileChange change : unstaged)
+		// Diff-merge each section: match existing entries by (path, scope, status).
+		DiffMergeSection(__OldStaged, __NewStaged);
+		DiffMergeSection(__OldUnstaged, __NewUnstaged);
+
+		// Rebuild the ListView — headers are stateless, file entries are preserved.
+		var __Items = ChangesListView.getItems();
+		__Items.clear();
+		__Items.add(new ChangeEntryWidget("Staged"));
+		__Items.addAll(__OldStaged);
+		__Items.add(new ChangeEntryWidget("Unstaged"));
+		__Items.addAll(__OldUnstaged);
+	}
+
+	/**
+	 * Mark-and-sweep merge for one section (staged or unstaged):
+	 * existing entries that match a new FileChange are kept;
+	 * unmatched old entries are removed;
+	 * unmatched new FileChanges get new ChangeEntryWidgets created.
+	 */
+	private void DiffMergeSection(List<ChangeEntryWidget> _OldEntries, List<FileChange> _NewChanges)
+	{
+		var __OldIter = _OldEntries.iterator();
+		while (__OldIter.hasNext())
 		{
-			ChangesListView.getItems().add(new ChangeEntryWidget(this, change));
+			var __Old = __OldIter.next();
+			FileChange __OldFC = __Old.GetFileChange();
+			boolean __Found = false;
+
+			var __NewIter = _NewChanges.iterator();
+			while (__NewIter.hasNext())
+			{
+				FileChange __NewFC = __NewIter.next();
+				if (__OldFC.GetFilePath().equals(__NewFC.GetFilePath())
+					&& __OldFC.GetScope() == __NewFC.GetScope()
+					&& __OldFC.GetStatus() == __NewFC.GetStatus())
+				{
+					__NewIter.remove(); // matched; do not create new entry
+					__Found = true;
+					break;
+				}
+			}
+
+			if (!__Found)
+				__OldIter.remove(); // no longer present
 		}
+
+		// Leftovers in _NewChanges are genuinely new entries.
+		for (FileChange __NewFC : _NewChanges)
+			_OldEntries.add(new ChangeEntryWidget(this, __NewFC));
 	}
 
 	/**
@@ -234,29 +285,22 @@ public class ChangesWidget extends BaseWidget
 		}
 
 		_SourceCheckBox.setDisable(true);
-		GetGitDirTarget().RunCMDAsync(__Cmd).thenAccept(result ->
-		{
-			if (result.getKey() != 0)
-				throw new RuntimeException(result.getValue());
-
-			Platform.runLater(() ->
-			{
-				AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("git-operation-completed", GetGitDirTarget());
-			});
-		}).exceptionally(ex ->
+		GetGitDirTarget().GetOperator().RunGitOp(__Cmd, ERefreshPolicy.REFRESH_AND_UPDATE_UI, (__Ok, __Err, __Dir) ->
 		{
 			Platform.runLater(() ->
 			{
-				_SourceCheckBox.setDisable(false);
-				_SourceCheckBox.setSelected(!_ShouldBeStaged);
+				if (!__Ok)
+				{
+					_SourceCheckBox.setDisable(false);
+					_SourceCheckBox.setSelected(!_ShouldBeStaged);
 
-				Alert __Alert = new Alert(Alert.AlertType.ERROR);
-				__Alert.setTitle("Git Operation Failed");
-				__Alert.setHeaderText(_ShouldBeStaged ? "Failed to stage file" : "Failed to unstage file");
-				__Alert.setContentText(ex.getMessage());
-				__Alert.showAndWait();
+					Alert __Alert = new Alert(Alert.AlertType.ERROR);
+					__Alert.setTitle("Git Operation Failed");
+					__Alert.setHeaderText(_ShouldBeStaged ? "Failed to stage file" : "Failed to unstage file");
+					__Alert.setContentText(__Err);
+					__Alert.showAndWait();
+				}
 			});
-			return null;
 		});
 	}
 }

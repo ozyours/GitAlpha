@@ -40,6 +40,3 @@ build/
 
 ### Mac OS ###
 .DS_Store
-
-### Agent instructions ###
-AGENTS.md
