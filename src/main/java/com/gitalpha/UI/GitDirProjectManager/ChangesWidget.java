@@ -1,5 +1,6 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
+import com.gitalpha.Engine.Debug;
 import com.gitalpha.Engine.ERefreshPolicy;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.EFileChangeStatus;
@@ -8,17 +9,17 @@ import com.gitalpha.Type.FileChange;
 import com.gitalpha.UI.IObject;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
-import javafx.scene.Node;
 import javafx.scene.control.*;
-import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
 
 class ChangeEntryWidget extends HBox implements IObject
 {
@@ -61,11 +62,6 @@ class ChangeEntryWidget extends HBox implements IObject
 
 		// Add components to the entry
 		getChildren().addAll(CommitCheckBox, statusText, pathFlow);
-
-		setOnMouseClicked(mouseEvent ->
-		{
-			ChangesWidget.GetGitDirProjectManagerWidgetTarget().ReadFileChange(FileChangeTarget);
-		});
 	}
 
 	public ChangeEntryWidget(String _HeaderText)
@@ -131,6 +127,10 @@ public class ChangesWidget extends BaseWidget
 
 	private final ListView<ChangeEntryWidget> ChangesListView;
 
+	/** Persistent header widgets — reused across refreshes so a highlighted header keeps its highlight */
+	private final ChangeEntryWidget StagedHeader = new ChangeEntryWidget("Staged");
+	private final ChangeEntryWidget UnstagedHeader = new ChangeEntryWidget("Unstaged");
+
 	public ChangesWidget(GitDir _GitDirTarget, GitDirProjectManagerWidget _GitDirProjectManagerWidgetTarget)
 	{
 		super(_GitDirTarget, _GitDirProjectManagerWidgetTarget);
@@ -141,32 +141,35 @@ public class ChangesWidget extends BaseWidget
 
 		// Add ListView to the StackPane
 		getChildren().add(ChangesListView);
-		// Clear the diff viewer when clicking on headers or empty space
-		ChangesListView.addEventHandler(MouseEvent.MOUSE_CLICKED, event ->
-		{
-			// Walk up from the clicked node to see if it is inside a ChangesEntry
-			Node clickTarget = (Node) event.getTarget();
-			while (clickTarget != null && !(clickTarget instanceof ChangeEntryWidget))
-				clickTarget = clickTarget.getParent();
 
-			if (clickTarget instanceof ChangeEntryWidget entry)
+		// The diff viewer follows the ListView selection (highlight), not clicks.
+		// A file entry shows its diff; a header (or no selection) has no FileChange,
+		// so the diff viewer becomes empty.
+		ChangesListView.getSelectionModel().selectedItemProperty().addListener((__Obs, __OldItem, __NewItem) ->
+		{
+			if (__NewItem != null && !__NewItem.IsHeader)
 			{
-				// Click on a "Staged" or "Unstaged" header -> clear the diff view and selection
-				if (entry.IsHeader)
-				{
-					ChangesListView.getSelectionModel().clearSelection();
-					GetGitDirProjectManagerWidgetTarget().ReadFileChange(null);
-				}
+				Debug.Log(Debug.ChangesCategory, "[Changes] Selection -> ReadFileChange(%s)\n", __NewItem.GetFileChange().GetFilePath());
+				GetGitDirProjectManagerWidgetTarget().ReadFileChange(__NewItem.GetFileChange());
 			}
 			else
 			{
-				// Click on empty space in the ListView -> clear the diff view and selection
-				ChangesListView.getSelectionModel().clearSelection();
+				Debug.Log(Debug.ChangesCategory, "[Changes] Selection (header/none) -> ReadFileChange(null)\n");
 				GetGitDirProjectManagerWidgetTarget().ReadFileChange(null);
 			}
 		});
+
+		// Clicking empty space deselects nothing — selection is the sole driver of the diff viewer.
 	}
 
+	/**
+	 * Rebuild the staged/unstaged entries from the current GitDir state.
+	 *
+	 * Surviving FileChanges keep their existing ChangeEntryWidget instances (so the
+	 * current selection and the diff viewer survive a refresh), each section is
+	 * re-sorted by path normalized to '/' to mirror git's ordering, and the new order
+	 * is applied in place by relocating entries rather than duplicating them.
+	 */
 	public void UpdateChanges()
 	{
 		// Partition new file changes by scope.
@@ -198,13 +201,40 @@ public class ChangesWidget extends BaseWidget
 		DiffMergeSection(__OldStaged, __NewStaged);
 		DiffMergeSection(__OldUnstaged, __NewUnstaged);
 
-		// Rebuild the ListView — headers are stateless, file entries are preserved.
+		// Keep each section sorted by path as git reports them: paths are normalized
+		// to '/' separators so the sort key matches git's byte-wise ordering closely.
+		__OldStaged.sort(Comparator.comparing(__Entry -> __Entry.GetFileChange().GetFilePath().toString().replace('\\', '/')));
+		__OldUnstaged.sort(Comparator.comparing(__Entry -> __Entry.GetFileChange().GetFilePath().toString().replace('\\', '/')));
+
+		// Build the desired item order: preserved entries keep their widgets (they may
+		// be relocated by the sort), new entries land in their sorted position. Header
+		// widgets are persistent instances, kept and reused.
+		List<ChangeEntryWidget> __Desired = new ArrayList<>();
+		__Desired.add(StagedHeader);
+		__Desired.addAll(__OldStaged);
+		__Desired.add(UnstagedHeader);
+		__Desired.addAll(__OldUnstaged);
+
+		// Apply the minimal change to the items list instead of clearing/repopulating:
+		// removeIf drops entries that are gone, and the loop below is move-capable, so a
+		// survivor that changed sort position is relocated instead of duplicated. The
+		// selected item reference is left untouched, so the diff viewer does not flicker.
 		var __Items = ChangesListView.getItems();
-		__Items.clear();
-		__Items.add(new ChangeEntryWidget("Staged"));
-		__Items.addAll(__OldStaged);
-		__Items.add(new ChangeEntryWidget("Unstaged"));
-		__Items.addAll(__OldUnstaged);
+		var __DesiredSet = new HashSet<>(__Desired);
+		__Items.removeIf(__Entry -> !__DesiredSet.contains(__Entry));
+
+		int __InsertIdx = 0;
+		for (var __DesiredEntry : __Desired)
+		{
+			if (__InsertIdx >= __Items.size() || __Items.get(__InsertIdx) != __DesiredEntry)
+			{
+				int __FoundAt = __Items.indexOf(__DesiredEntry);
+				if (__FoundAt > __InsertIdx)
+					__Items.remove(__FoundAt); // relocate an existing survivor into its sorted slot
+				__Items.add(__InsertIdx, __DesiredEntry);
+			}
+			__InsertIdx++;
+		}
 	}
 
 	/**
@@ -212,6 +242,7 @@ public class ChangesWidget extends BaseWidget
 	 * existing entries that match a new FileChange are kept;
 	 * unmatched old entries are removed;
 	 * unmatched new FileChanges get new ChangeEntryWidgets created.
+	 * Both input lists are mutated in place — _NewChanges is consumed by the match.
 	 */
 	private void DiffMergeSection(List<ChangeEntryWidget> _OldEntries, List<FileChange> _NewChanges)
 	{

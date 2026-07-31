@@ -1,5 +1,6 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
+import com.gitalpha.Engine.Debug;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.FileChange;
 import javafx.application.Platform;
@@ -221,16 +222,6 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
-	 * If a file change is currently displayed, re-loads its diff.
-	 * Called after a repository refresh to pick up any modifications.
-	 */
-	public void RefreshCurrentFileChange()
-	{
-		if (FileChangeTarget != null)
-			SetFileChange(FileChangeTarget);
-	}
-
-	/**
 	 * Loads and displays the diff for the given file change.
 	 * Shows a "Loading..." indicator, then replaces it with the rendered diff
 	 * or an error message. Stale responses (for a superseded target) are dropped.
@@ -242,6 +233,7 @@ public class TextViewerWidget extends BaseWidget
 	 */
 	public void SetFileChange(FileChange _FileChangeTarget)
 	{
+		Debug.Log(Debug.ChangesCategory, "[Changes] SetFileChange(%s) -> clearing content container\n", _FileChangeTarget == null ? "<null>" : _FileChangeTarget.GetFilePath().toString());
 		FileChangeTarget = _FileChangeTarget;
 		ContentContainer.getChildren().clear();
 

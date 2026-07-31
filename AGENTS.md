@@ -64,7 +64,7 @@ GitDir (per repo, ISerializable) — data holder only
 - **Cancellation**: if a new operation arrives during a refresh, `RefreshCanceled` is set and the in-flight process is `destroyForcibly()`-killed; the refresh bails between sub-commands and a fresh one runs after the new operation.
 - Refresh pipeline: `git branch -a` → staged changes → unstaged changes (+ untracked) → diff-merge (keeps existing `FileChange` objects so cached diffs survive).
 - Callbacks (`IGitOperationCallback.OnCompleted(ok, error, gitDir)`) fire **on the runner thread** after the batch — wrap UI work in `Platform.runLater`. Callbacks always fire, even when the refresh fails or is skipped.
-- UI rebuild entry point: `GitDirProjectManagerWidget.RefreshGitDirProjectManagerWidget()` → `GitDir.Refresh(callback)` → on the FX thread: `ChangesWidget.UpdateChanges()`, `BranchWidget.UpdateBranchList()`, `TextViewerWidget.RefreshCurrentFileChange()`.
+- UI rebuild entry point: `GitDirProjectManagerWidget.RefreshGitDirProjectManagerWidget()` → `GitDir.Refresh(callback)` → on the FX thread: `ChangesWidget.UpdateChanges()` + `BranchWidget.UpdateBranchList()` (the diff viewer is driven by the file list selection, so it needs no explicit refresh)
 
 ### Threading model
 
@@ -99,7 +99,8 @@ These are not optional — match them when adding or editing methods.
 - Stale responses (user switched to another file) are dropped by comparing the captured target
 - "Loading..." is centered in the viewport via a `StackPane` bound to `ScrollPane.viewportBoundsProperty()`
 - `FileChange.GetDiffLines()` runs a sync `git diff` through `GitDir.RunCMD` on the ForkJoinPool and caches the parsed diff by file mtime; untracked files synthesize a full-add `@@ -0,0 +1,n @@` diff
-- File list click handling: clicking "Staged"/"Unstaged" headers or empty space clears the diff view and **removes the list selection** (`clearSelection()`)
+- File list behavior is **selection-driven**: the diff viewer follows the ListView highlight (`selectedItemProperty`) — selecting a file entry shows its diff, while a "Staged"/"Unstaged" header or an empty selection empties the viewer. Headers carry no `FileChange`, so selecting one only highlights it; there are no mouse-click handlers on the list (not even for empty space)
+- `ChangesWidget.UpdateChanges()` updates the items list **in place** (diff-merge by path/scope/status, `removeIf` + move-capable ordered insertion) instead of clearing/repopulating: surviving entries keep their widget instance and are only ever relocated, never rebuilt, so the current selection — and therefore the diff viewer — survives a refresh untouched. Header widgets (`StagedHeader`/`UnstagedHeader`) are persistent instances so a highlighted header keeps its highlight too; each section is re-sorted by file path every refresh (paths normalized to `/` separators to approximate git's ordering)
 
 ## Key Gotchas
 

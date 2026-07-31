@@ -30,15 +30,24 @@ public class GitDirProjectManagerWidget extends StackPane
 
 		var __GridLayout = new GridPane();
 
-		// Basic layout without constraints
+		// Left pane (branches + changes + commit) keeps a fixed width;
+		// the diff viewer (column 1) takes all remaining space.
+		var __LeftColumn = new ColumnConstraints();
+		__LeftColumn.setMinWidth(LEFT_PANE_WIDTH);
+		__LeftColumn.setPrefWidth(LEFT_PANE_WIDTH);
+		__LeftColumn.setMaxWidth(LEFT_PANE_WIDTH);
+		__GridLayout.getColumnConstraints().add(__LeftColumn);
+
 		__GridLayout.add(BranchWidgetInstance, 0, 0);    // Top left
 		__GridLayout.add(ChangesWidgetInstance, 0, 1);   // Middle left
 		__GridLayout.add(CommitWidgetInstance, 0, 2);    // Bottom left
 		__GridLayout.add(TextViewerWidgetInstance, 1, 0, 1, 3); // Right side, spanning 3 rows
 
-		//		GridPane.setHgrow(BranchWidgetInstance, Priority.ALWAYS);
-		//		GridPane.setVgrow(BranchWidgetInstance, Priority.ALWAYS);
-		//		GridPane.setHgrow(ChangesWidgetInstance, Priority.ALWAYS);
+		// Fill the fixed-width column so the widgets stretch to its full width
+		GridPane.setHgrow(BranchWidgetInstance, Priority.ALWAYS);
+		GridPane.setHgrow(ChangesWidgetInstance, Priority.ALWAYS);
+		GridPane.setHgrow(CommitWidgetInstance, Priority.ALWAYS);
+
 		GridPane.setVgrow(ChangesWidgetInstance, Priority.ALWAYS);
 
 		GridPane.setHgrow(TextViewerWidgetInstance, Priority.ALWAYS);
@@ -61,6 +70,9 @@ public class GitDirProjectManagerWidget extends StackPane
 
 		RefreshGitDirProjectManagerWidget();
 	}
+
+	/** Fixed width (px) of the left pane containing branches + file changes */
+	private static final double LEFT_PANE_WIDTH = 500;
 
 	public final GitDirTabButton TabButton;
 	public final GitDir GitDirTarget;
@@ -91,7 +103,6 @@ public class GitDirProjectManagerWidget extends StackPane
 
 				ChangesWidgetInstance.UpdateChanges();
 				BranchWidgetInstance.UpdateBranchList();
-				TextViewerWidgetInstance.RefreshCurrentFileChange();
 			});
 		});
 	}
