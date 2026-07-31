@@ -37,18 +37,12 @@ Items that were discussed and have been committed to `master`.
       GitDir async/refresh code removed (`bdcfe20`)
 - [x] **AGENTS.md tracked + rewritten** — un-ignored from `.gitignore`, documents architecture,
       threading model, naming conventions, diff viewer, and known gotchas (`bdcfe20`)
-
-### Implemented, awaiting commit
-
-Discussed and implemented, but not yet committed:
-
-- [ ] Fixed left pane width (`LEFT_PANE_WIDTH = 400`) in `GitDirProjectManagerWidget`
-- [ ] Selection-driven diff viewer — `selectedItemProperty` listener replaces click handlers; header
-      clicks keep their highlight; no mouse-click handlers remain on the changes list
-- [ ] In-place `ChangesWidget.UpdateChanges()` — diff-merge by path/scope/status, `removeIf` +
-      move-capable ordered insertion, persistent header widgets, per-section path sort (normalized
-      to `/`); selection and diff viewer survive refreshes
-- [ ] ROADMAP.md added
+- [x] **Selection-driven diff viewer & refresh-stable changes list** — the diff viewer follows the
+      ListView selection (`selectedItemProperty`) instead of click handlers; header clicks keep their
+      highlight; persistent header widgets; `ChangesWidget.UpdateChanges()` updates items in place
+      (`removeIf` + move-capable ordered insertion, per-section path sort) so the selection and diff
+      survive refreshes; fixed left pane width (`LEFT_PANE_WIDTH = 500`); ROADMAP.md added
+      (`ea9cfe3`)
 
 ---
 
