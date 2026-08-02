@@ -43,32 +43,30 @@ Items that were discussed and have been committed to `master`.
       (`removeIf` + move-capable ordered insertion, per-section path sort) so the selection and diff
       survive refreshes; fixed left pane width (`LEFT_PANE_WIDTH = 500`); ROADMAP.md added
       (`ea9cfe3`)
-
-### Implemented, awaiting commit
-
-- [ ] **Commit widget** — `CommitWidget` is now a working commit form (summary `TextField` + description
-      `TextArea` + `Commit` button); submits `git commit` via the operator queue with
-      `REFRESH_AND_UPDATE_UI`, disables the form while in flight to prevent double-submit, clears on
-      success, error alert on failure
-- [ ] **Left-pane layout sizing** — `GitDirWidget` is the layout authority
-      (`LEFT_PANE_WIDTH = 500`); branch row pinned `140`, changes row `min 240 + vgrow ALWAYS` (the only
-      growable row), commit row fixed pref height `300` (sticks to the bottom); stage min size 800×720
-      set before saved-bounds restore in `MainJavaFx`
-- [ ] **Active-branch rendering** — `BranchWidget` cell factory shows the active local branch with a dot,
-      bold green text and a tooltip; `ActiveBranch` stores the full branch path (leaf-name collision fix);
-      remote classification by `remotes/` prefix (not slash count); detached-HEAD lines skipped; checkout
-      error alert + context-menu Checkout wired
-- [ ] **File load guards** — `FileChange.GetDiffLines()` returns a `DiffLoadResult` with an
-      `EFileLoadGuard`: content sniffing (NUL byte in the first 8000 bytes) marks non-text files `BINARY`
-      (never loaded); files above `LARGE_FILE_THRESHOLD_BYTES` (1 MB) are `LARGE_FILE` (not auto-loaded)
-      and `TextViewerWidget` shows a centered "Load file" button that calls `GetDiffLinesForce()`; a
-      cached diff (matching mtime) is returned regardless of guards
-- [ ] **Virtualized diff viewer** — `TextViewerWidget` replaced the ScrollPane + VBox (one HBox per row,
-      froze on large files) with a virtualized `ListView<PreparedRow>` + `DiffRowCell` cell factory +
-      `setFixedCellSize` so node creation is O(visible rows); horizontal-only `ScrollPane` wrapper pans
-      wide rows (`ComputeContentWidth` mono-font sizing); loading/guard/prompt/error states moved to a
-      layered `OverlayPane`; stale-response guards kept; `SetDiffRows` calls `refresh()` so same-count
-      diffs rebuild visible cells
+- [x] **Commit widget** — working commit form (summary `TextField` + description `TextArea` +
+      `Commit` button) submits `git commit` via the operator queue with `REFRESH_AND_UPDATE_UI`,
+      disables the form while in flight to prevent double-submit, clears on success, error alert on
+      failure (`c998ac7`)
+- [x] **Left-pane layout sizing** — `GitDirWidget` is the layout authority
+      (`LEFT_PANE_WIDTH = 500`); branch row pinned `140`, changes row `min 240 + vgrow ALWAYS` (the
+      only growable row), commit row fixed pref height `300` (sticks to the bottom); stage min size
+      800×720 set before saved-bounds restore in `MainJavaFx` (`c998ac7`)
+- [x] **Active-branch rendering** — `BranchWidget` cell factory shows the active local branch with a
+      dot, bold green text and a tooltip; `ActiveBranch` stores the full branch path (leaf-name
+      collision fix); remote classification by `remotes/` prefix (not slash count); detached-HEAD
+      lines skipped; checkout error alert + context-menu Checkout wired (`c998ac7`)
+- [x] **File load guards** — `FileChange.GetDiffLines()` returns a `DiffLoadResult` with an
+      `EFileLoadGuard`: content sniffing (NUL byte in the first 8000 bytes) marks non-text files
+      `BINARY` (never loaded); files above `LARGE_FILE_THRESHOLD_BYTES` (1 MB) are `LARGE_FILE` (not
+      auto-loaded) and `TextViewerWidget` shows a centered "Load file" button that calls
+      `GetDiffLinesForce()`; a cached diff (matching mtime) is returned regardless of guards
+      (`c998ac7`)
+- [x] **Virtualized diff viewer** — `TextViewerWidget` replaced the ScrollPane + VBox (one HBox per
+      row, froze on large files) with a virtualized `ListView<PreparedRow>` + `DiffRowCell` cell
+      factory + `setFixedCellSize` so node creation is O(visible rows); a bottom horizontal
+      `ScrollBar` pans wide rows (`DiffContentWidth` / `PanOffset`); loading/guard/prompt/error
+      states moved to a layered `OverlayPane`; stale-response guards kept; `SetDiffRows` calls
+      `refresh()` so same-count diffs rebuild visible cells (`c998ac7`)
 
 ---
 
