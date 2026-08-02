@@ -1,6 +1,5 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
-import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.Debug;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.GitBranch;
@@ -8,36 +7,39 @@ import javafx.application.Platform;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.input.MouseButton;
-import javafx.scene.layout.StackPane;
-import javafx.scene.text.Text;
-
-import java.util.concurrent.CompletableFuture;
 
 class BranchWidget extends BaseWidget
 {
-	private static final double MIN_WIDTH = 200;
-	private static final double MIN_HEIGHT = 300;
-	private static final String ACTIVE_BRANCH_MARKER = "* ";
+	private static final String ACTIVE_BRANCH_DOT = "\u25CF"; // "●"
+	private static final String ACTIVE_BRANCH_STYLE = "-fx-font-weight: bold; -fx-text-fill: #2e7d32;";
+	private static final int SPACING = 10;
 
 	private final TreeView<String> LocalTreeView;
 	private final TreeView<String> RemoteTreeView;
 
-	public BranchWidget(GitDir _GitDirTarget, GitDirProjectManagerWidget _GitDirProjectManagerWidgetTarget)
+	public BranchWidget(GitDir _GitDirTarget, GitDirWidget _GitDirWidgetTarget)
 	{
-		super(_GitDirTarget, _GitDirProjectManagerWidgetTarget);
+		super(_GitDirTarget, _GitDirWidgetTarget);
 
 		// Create and configure the TreeViews for local and remote branches
 		LocalTreeView = new TreeView<>();
 		RemoteTreeView = new TreeView<>();
-		LocalTreeView.setMinSize(MIN_WIDTH / 2.0, MIN_HEIGHT);
-		RemoteTreeView.setMinSize(MIN_WIDTH / 2.0, MIN_HEIGHT);
+		// Cell factory renders the active branch with a dot, bold text and accent
+		// color instead of a text marker; remote rows never show the active style.
+		// The lambda parameter (__Ignored) is the TreeView itself, which the factory
+		// does not need — only the local/remote flag decides the cell appearance.
+		LocalTreeView.setCellFactory(__Ignored -> CreateBranchCell(false));
+		RemoteTreeView.setCellFactory(__Ignored -> CreateBranchCell(true));
 
 		// Update the branch list (populate trees)
 		UpdateBranchList();
@@ -49,9 +51,19 @@ class BranchWidget extends BaseWidget
 		VBox localBox = new VBox(new Label("Local Branches"), LocalTreeView);
 		VBox remoteBox = new VBox(new Label("Remote Branches"), RemoteTreeView);
 		HBox h = new HBox(localBox, remoteBox);
+		h.setSpacing(SPACING);
+		// The trees must grow inside their VBoxes: the branch row height comes from
+		// GitDirWidget's RowConstraints, and VBox only stretches
+		// children that opt in via Vgrow.
+		VBox.setVgrow(LocalTreeView, Priority.ALWAYS);
+		VBox.setVgrow(RemoteTreeView, Priority.ALWAYS);
 		getChildren().add(h);
 	}
 
+	/**
+	 * Wire up mouse interaction on both trees: double-click a leaf node to check
+	 * out that branch, right-click to open the shared branch context menu.
+	 */
 	private void SetupClickHandlers()
 	{
 		// Context menu for branch operations
@@ -83,7 +95,7 @@ class BranchWidget extends BaseWidget
 			{
 				if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2)
 				{
-					String full = BuildFullNameFromItem(sel, false);
+					String full = BuildFullNameFromItem(sel);
 					if (full != null)
 						CheckoutBranchByName(full);
 				}
@@ -102,7 +114,7 @@ class BranchWidget extends BaseWidget
 			{
 				if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2)
 				{
-					String full = BuildFullNameFromItem(sel, true);
+					String full = BuildFullNameFromItem(sel);
 					if (full != null)
 						CheckoutBranchByName(full);
 				}
@@ -114,9 +126,24 @@ class BranchWidget extends BaseWidget
 		});
 	}
 
+	/**
+	 * Check out the branch selected in either tree (local takes precedence).
+	 * Context-menu action; checks out the selected leaf's full branch path.
+	 */
 	private void CheckoutSelectedBranch()
 	{
-		// Deprecated: use tree double-click handlers which call checkoutBranchByName
+		TreeItem<String> sel = LocalTreeView.getSelectionModel().getSelectedItem();
+		boolean local = sel != null;
+		if (!local)
+		{
+			sel = RemoteTreeView.getSelectionModel().getSelectedItem();
+			if (sel == null)
+				return;
+		}
+
+		String full = BuildFullNameFromItem(sel);
+		if (full != null)
+			CheckoutBranchByName(full);
 	}
 
 	private void CreateNewBranch()
@@ -154,6 +181,11 @@ class BranchWidget extends BaseWidget
 		//		}
 	}
 
+	/**
+	 * Rebuild both branch trees from the current GitDir branch list.
+	 * Re-roots each tree and repopulates; the rebuild is deferred to the JavaFX
+	 * thread, so this may be called from a refresh callback.
+	 */
 	public void UpdateBranchList()
 	{
 		Debug.Log(Debug.BranchesCategory, "Updating branch list");
@@ -163,6 +195,55 @@ class BranchWidget extends BaseWidget
 			RemoteTreeView.setRoot(null);
 			PopulateBranchTrees();
 		});
+	}
+
+	/**
+	 * Cell factory for the branch trees. The active LOCAL branch is rendered with
+	 * a dot graphic, bold green text and a tooltip so it stands out without a text
+	 * marker; remote rows never show the active style.
+	 * The active check compares the FULL branch path (rebuilt from the tree
+	 * hierarchy) so branches sharing a leaf name (e.g. "feature/foo" vs
+	 * "hotfix/foo") are not both marked active.
+	 *
+	 * @param _IsRemote true for the remote tree (suppresses the active style)
+	 */
+	private TreeCell<String> CreateBranchCell(boolean _IsRemote)
+	{
+		return new TreeCell<>()
+		{
+			@Override
+			protected void updateItem(String _BranchName, boolean _Empty)
+			{
+				super.updateItem(_BranchName, _Empty);
+				if (_Empty || _BranchName == null)
+				{
+					setText(null);
+					setGraphic(null);
+					setTooltip(null);
+					setStyle("");
+					return;
+				}
+
+				setText(_BranchName);
+				// Compare the full branch path (rebuilt from the tree hierarchy) so
+				// branches sharing a leaf name (e.g. "feature/foo" vs "hotfix/foo")
+				// are not both marked active.
+				String __FullName = BuildFullNameFromItem(getTreeItem());
+				boolean __IsActive = !_IsRemote && __FullName != null && __FullName.equals(GetGitDirTarget().GetActiveBranch());
+				if (__IsActive)
+				{
+					setGraphic(new Label(ACTIVE_BRANCH_DOT));
+					setStyle(ACTIVE_BRANCH_STYLE);
+					setTooltip(new Tooltip("Currently checked out"));
+				}
+				else
+				{
+					setGraphic(null);
+					setStyle("");
+					setTooltip(null);
+				}
+			}
+		};
 	}
 
 	// Core population logic (must be called on JavaFX thread)
@@ -180,11 +261,11 @@ class BranchWidget extends BaseWidget
 			java.util.List<String> ns = branch.Namespace();
 			if (branch.Remote())
 			{
-				InsertIntoTree(remoteRoot, ns, name, true);
+				InsertIntoTree(remoteRoot, ns, name);
 			}
 			else
 			{
-				InsertIntoTree(localRoot, ns, name, false);
+				InsertIntoTree(localRoot, ns, name);
 			}
 		}
 
@@ -194,10 +275,18 @@ class BranchWidget extends BaseWidget
 		RemoteTreeView.setRoot(remoteRoot);
 	}
 
-	private void InsertIntoTree(TreeItem<String> root, java.util.List<String> namespace, String name, boolean isRemote)
+	/**
+	 * Insert a branch into a tree, creating namespace hierarchy nodes as needed
+	 * (each is expanded on creation so nested branches are visible immediately).
+	 *
+	 * @param _Root      the tree root to insert under
+	 * @param _Namespace branch namespace segments (empty for a top-level branch)
+	 * @param _Name      leaf branch name
+	 */
+	private void InsertIntoTree(TreeItem<String> _Root, java.util.List<String> _Namespace, String _Name)
 	{
-		TreeItem<String> cur = root;
-		for (String seg : namespace)
+		TreeItem<String> cur = _Root;
+		for (String seg : _Namespace)
 		{
 			TreeItem<String> child = null;
 			for (TreeItem<String> c : cur.getChildren())
@@ -217,32 +306,31 @@ class BranchWidget extends BaseWidget
 			cur = child;
 		}
 
-		// add leaf
-		// mark active local branch
-		String leafText = name;
-		if (!isRemote && name.equals(GetGitDirTarget().GetActiveBranch()))
-		{
-			leafText = ACTIVE_BRANCH_MARKER + name;
-		}
-		TreeItem<String> leaf = new TreeItem<>(leafText);
+		// add leaf with the clean branch name; active-branch styling is applied
+		// by the cell factory, not baked into the string
+		TreeItem<String> leaf = new TreeItem<>(_Name);
 		cur.getChildren().add(leaf);
 	}
 
-	// Build full branch name (namespace/name) from a selected TreeItem; returns null if selection is a namespace node
-	private String BuildFullNameFromItem(TreeItem<String> item, boolean isRemote)
+	/**
+	 * Rebuild the full branch path (namespace/name) from a tree item by walking
+	 * up to the hidden "local-root"/"remote-root" sentinel. Only leaf nodes are
+	 * branch names; namespace nodes cannot be checked out.
+	 *
+	 * @param _Item the tree item to resolve (a leaf = a branch)
+	 * @return the full branch path, or null if _Item is null or not a leaf
+	 */
+	private String BuildFullNameFromItem(TreeItem<String> _Item)
 	{
-		if (item == null)
+		if (_Item == null)
 			return null;
-		if (!item.isLeaf())
+		if (!_Item.isLeaf())
 			return null; // only leaf nodes represent branch names
 
 		java.util.ArrayList<String> parts = new java.util.ArrayList<>();
-		TreeItem<String> cur = item;
-		// strip active marker if present
-		String val = cur.getValue();
-		if (val.startsWith(ACTIVE_BRANCH_MARKER))
-			val = val.substring(ACTIVE_BRANCH_MARKER.length());
-		parts.add(val);
+		TreeItem<String> cur = _Item;
+		// branch names are stored clean, so there is no marker to strip
+		parts.add(cur.getValue());
 		while (cur.getParent() != null && cur.getParent().getValue() != null && !cur.getParent().getValue().equals("local-root") && !cur.getParent().getValue().equals("remote-root"))
 		{
 			cur = cur.getParent();
@@ -253,6 +341,11 @@ class BranchWidget extends BaseWidget
 		return String.join("/", parts);
 	}
 
+	/**
+	 * Check out a branch by its full path through the GitOperator queue and show
+	 * an error dialog on failure (the refresh/broadcast after a successful
+	 * checkout is handled by the operator).
+	 */
 	private void CheckoutBranchByName(String fullName)
 	{
 		GetGitDirTarget().ChangeBranch(fullName, (__Ok, __Err, __Dir) ->

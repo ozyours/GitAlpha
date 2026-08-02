@@ -44,6 +44,32 @@ Items that were discussed and have been committed to `master`.
       survive refreshes; fixed left pane width (`LEFT_PANE_WIDTH = 500`); ROADMAP.md added
       (`ea9cfe3`)
 
+### Implemented, awaiting commit
+
+- [ ] **Commit widget** — `CommitWidget` is now a working commit form (summary `TextField` + description
+      `TextArea` + `Commit` button); submits `git commit` via the operator queue with
+      `REFRESH_AND_UPDATE_UI`, disables the form while in flight to prevent double-submit, clears on
+      success, error alert on failure
+- [ ] **Left-pane layout sizing** — `GitDirWidget` is the layout authority
+      (`LEFT_PANE_WIDTH = 500`); branch row pinned `140`, changes row `min 240 + vgrow ALWAYS` (the only
+      growable row), commit row fixed pref height `300` (sticks to the bottom); stage min size 800×720
+      set before saved-bounds restore in `MainJavaFx`
+- [ ] **Active-branch rendering** — `BranchWidget` cell factory shows the active local branch with a dot,
+      bold green text and a tooltip; `ActiveBranch` stores the full branch path (leaf-name collision fix);
+      remote classification by `remotes/` prefix (not slash count); detached-HEAD lines skipped; checkout
+      error alert + context-menu Checkout wired
+- [ ] **File load guards** — `FileChange.GetDiffLines()` returns a `DiffLoadResult` with an
+      `EFileLoadGuard`: content sniffing (NUL byte in the first 8000 bytes) marks non-text files `BINARY`
+      (never loaded); files above `LARGE_FILE_THRESHOLD_BYTES` (1 MB) are `LARGE_FILE` (not auto-loaded)
+      and `TextViewerWidget` shows a centered "Load file" button that calls `GetDiffLinesForce()`; a
+      cached diff (matching mtime) is returned regardless of guards
+- [ ] **Virtualized diff viewer** — `TextViewerWidget` replaced the ScrollPane + VBox (one HBox per row,
+      froze on large files) with a virtualized `ListView<PreparedRow>` + `DiffRowCell` cell factory +
+      `setFixedCellSize` so node creation is O(visible rows); horizontal-only `ScrollPane` wrapper pans
+      wide rows (`ComputeContentWidth` mono-font sizing); loading/guard/prompt/error states moved to a
+      layered `OverlayPane`; stale-response guards kept; `SetDiffRows` calls `refresh()` so same-count
+      diffs rebuild visible cells
+
 ---
 
 ## Pending Plan
@@ -52,12 +78,8 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 
 ### Core git operations (missing)
 
-- [ ] **Commit widget** — `CommitWidget` is an empty placeholder; add a Summary text field + a
-      Description text area (summary bar on top, description body below), placed at the bottom of the
-      left pane (shrink `BranchWidget` height to fit); submit runs `git commit` via the operator queue
-      and triggers a `REFRESH_AND_UPDATE_UI` refresh
-- [ ] **Branch create / delete / checkout** — create/delete context-menu items are TODO stubs;
-      double-click checkout works but has no error alert on failure
+- [ ] **Branch create / delete** — context-menu items are still TODO stubs (`CreateNewBranch` /
+      `DeleteBranch`); checkout already works (double-click and context menu, with error alert)
 - [ ] **Push / Pull** — context-menu items are TODO stubs (`PushBranch` / `PullBranch` are empty)
 - [ ] **Fetch** — no fetch operation exists
 - [ ] **Stash** — no stash support (create/apply/drop)
@@ -84,11 +106,22 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 
 ### Diff viewer / UX
 
-- [ ] **File load guards** — `FileChange.GetDiffLines()` reads any file unconditionally (and
-      `Files.readString` for untracked ones); before loading, check the file: large files are not
-      auto-loaded by default — the `TextViewerWidget` shows a button to load explicitly; non-text
-      files (detected by **content, not extension** — e.g. NUL bytes in a `.dll`) are never loaded
 - [ ] **Diff enhancements** — e.g. side-by-side mode, syntax highlighting, word-wrap toggle
 - [ ] **Commit history / log view** — no `git log` visualization exists
 - [ ] **Settings for refresh behavior** — auto-refresh frequency / toggle (currently refresh is
       event-driven only)
+
+### App shell / UI
+
+- [ ] **Top menu bar** — no `MenuBar` exists anywhere; `AlphaUI` is a `StackPane` whose only child is
+      the `TabPane` (`AlphaUI.java:30-31`) and the scene root is `AlphaUI.Instance` directly
+      (`MainJavaFx.java:31`). Add a `MenuBar` (e.g. File / Git / Settings / Help) above the tab pane —
+      requires restructuring `AlphaUI`'s root to a `BorderPane` (menu on top, tabs in center) and
+      rechecking the window floor. Natural home for the pending Settings UI item above
+- [ ] **Quick command bar** — a button row under the top menu bar whose command set is assigned in
+      settings. `AlphaSettings` currently holds only fixed entries (`GitPath`, `RecentSize`,
+      `TabMaxSize`) and `ESettingEntryType` supports only String/Bool/Integer/Float — no user-defined
+      command list exists. Add a settings-defined command list (each entry = display name + git args)
+      and render it as quick-action buttons; execution goes through the existing
+      `GitOperator.RunGitOp(cmd, policy, callback)` queue. Depends on the top menu bar + Settings UI
+      items above

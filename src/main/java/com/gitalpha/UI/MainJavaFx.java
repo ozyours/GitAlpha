@@ -5,8 +5,17 @@ import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
+/**
+ * JavaFX application entry point (fat-jar main class). Restores the persisted
+ * session and window bounds, enforces a minimum window size that matches the
+ * project widget's layout floor, and persists bounds changes on shutdown.
+ */
 public class MainJavaFx extends Application
 {
+	/**
+	 * Starts the application: load the session, build the main UI, apply the
+	 * saved window bounds (clamped to the layout-floor minimum), then show.
+	 */
 	@Override
 	public void start(Stage stage) throws Exception
 	{
@@ -14,9 +23,22 @@ public class MainJavaFx extends Application
 		if (AlphaUI.Instance == null)
 			new AlphaUI();
 
-		Scene __Scene = new Scene(AlphaUI.Instance, 800, 600);
+		// Default size suits the layout floor: the left pane needs 140px branch
+		// row + 240px minimum changes row + 300px commit form row + two 10px
+		// gaps (mirroring BRANCH_ROW_MIN_HEIGHT, CHANGES_ROW_MIN_HEIGHT and
+		// COMMIT_ROW_PREF_HEIGHT in GitDirWidget), plus the tab
+		// header.
+		Scene __Scene = new Scene(AlphaUI.Instance, 800, 720);
 		stage.setTitle("Git Alpha");
 		stage.setScene(__Scene);
+
+		// The left pane is fixed at 500px and its rows never shrink below their
+		// minimums, so clamp the window to 800x720: the height keeps the commit
+		// form fully visible, the width keeps the diff viewer usable beside the
+		// left column. Set before applying the saved bounds so a previously-saved
+		// smaller window is restored at (at least) this size.
+		stage.setMinWidth(800);
+		stage.setMinHeight(720);
 
 		// Apply saved window position/size
 		AlphaEngine __Engine = AlphaEngine.Instance;
@@ -66,6 +88,7 @@ public class MainJavaFx extends Application
 		stage.show();
 	}
 
+	/** Saves the session (open/recent repos + window bounds) on shutdown. */
 	@Override
 	public void stop() throws Exception
 	{
@@ -73,6 +96,7 @@ public class MainJavaFx extends Application
 		super.stop();
 	}
 
+	/** Application launcher — the shaded fat-jar entry point. */
 	public static void main(String[] args)
 	{
 		launch(args);

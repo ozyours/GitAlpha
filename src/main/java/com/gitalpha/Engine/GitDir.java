@@ -42,8 +42,12 @@ public class GitDir implements ISerializable
 	private final List<FileChange> ChangedFiles = new ArrayList<>();
 	/** All branches (local + remote) parsed from `git branch -a` */
 	private final List<GitBranch> Branches = new ArrayList<>();
-	/** Name of the currently checked-out branch */
-	private String ActiveBranch = "";
+	/**
+	 * Full path (namespace/name) of the currently checked-out branch.
+	 * Volatile because it is written by the GitOperator runner thread (checkout /
+	 * refresh) and read by the JavaFX thread, e.g. in BranchWidget's cell factory.
+	 */
+	private volatile String ActiveBranch = "";
 
 	/**
 	 * Operator that manages git operations and refresh for this GitDir.
@@ -102,15 +106,18 @@ public class GitDir implements ISerializable
 		return Branches;
 	}
 
-	/** @return name of the currently checked-out branch */
+	/** @return full path (namespace/name) of the currently checked-out branch */
 	public String GetActiveBranch()
 	{
 		return ActiveBranch;
 	}
 
 	/**
-	 * Package-private setter for ActiveBranch.
-	 * Used by {@link GitOperator} to update the active branch after git operations.
+	 * Package-private setter for ActiveBranch. The value is the FULL branch path
+	 * (namespace/name joined), never the bare leaf name, so branches that share a
+	 * leaf (e.g. "feature/foo" vs "hotfix/foo") stay distinguishable.
+	 * Called from the GitOperator runner thread; volatile makes the new value
+	 * visible to the JavaFX thread immediately.
 	 */
 	void SetActiveBranch(String _Name)
 	{

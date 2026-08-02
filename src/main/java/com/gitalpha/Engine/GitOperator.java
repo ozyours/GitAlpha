@@ -346,6 +346,8 @@ public class GitOperator implements AutoCloseable
 				String __BranchName = ExtractBranchName(_Op.Command());
 				if (__BranchName != null)
 				{
+					// Update the active branch immediately so the UI reflects the
+					// checkout even before the follow-up refresh re-parses it.
 					GitDirTarget.SetActiveBranch(__BranchName);
 				}
 			}
@@ -468,6 +470,14 @@ public class GitOperator implements AutoCloseable
 	/**
 	 * Parse the output of {@code git branch -a} into a list of {@link GitBranch} objects.
 	 * Also updates {@link GitDir#SetActiveBranch(String)} for the currently checked-out branch.
+	 * <p>
+	 * Non-branch lines are skipped early: symbolic refs ("remotes/origin/HEAD -> ...")
+	 * and detached-HEAD markers ("(HEAD detached at ...)").
+	 * A branch is remote iff its line carries the {@code remotes/} prefix — a local
+	 * branch may legitimately contain slashes (e.g. "feature/foo"), so the parts count
+	 * is not used for classification.
+	 * The starred (checked-out) branch is stored as its FULL path (namespace/name),
+	 * not the leaf name.
 	 */
 	private List<GitBranch> ParseBranchesOutput(String _Output)
 	{
@@ -487,12 +497,16 @@ public class GitOperator implements AutoCloseable
 				__Line = __Line.substring(1).trim();
 			}
 
-			// Skip symbolic refs and HEAD references.
-			if (__Line.contains("->") || __Line.equals("HEAD") || __Line.endsWith("/HEAD"))
+			// Skip symbolic refs, HEAD references and detached-HEAD markers.
+			// "remotes/origin/HEAD -> origin/main" and "(HEAD detached at ...)"
+			// are not branch names and must not reach the branch tree.
+			if (__Line.contains("->") || __Line.startsWith("(") || __Line.contains("HEAD"))
 				continue;
 
-			// Remove "remotes/" prefix if present.
-			if (__Line.startsWith("remotes/"))
+			// Remember whether this was a remote branch before removing the prefix;
+			// a local branch may also contain slashes (e.g. "feature/foo").
+			boolean __IsRemote = __Line.startsWith("remotes/");
+			if (__IsRemote)
 				__Line = __Line.substring("remotes/".length());
 
 			// Split namespace and name.
@@ -507,11 +521,13 @@ public class GitOperator implements AutoCloseable
 			for (int __Idx = 0; __Idx < __Parts.length - 1; ++__Idx)
 				__Namespace.add(__Parts[__Idx]);
 
-			boolean __IsRemote = __Parts.length > 1;
-
 			if (__Starred)
 			{
-				GitDirTarget.SetActiveBranch(__Name);
+				// Store the full branch path (namespace + name) so that branches
+				// sharing a leaf name (e.g. "feature/foo" vs "hotfix/foo") do not
+				// collide when the active branch is matched.
+				String __FullName = __Namespace.isEmpty() ? __Name : String.join("/", __Namespace) + "/" + __Name;
+				GitDirTarget.SetActiveBranch(__FullName);
 			}
 
 			__Branches.add(new GitBranch(__Name, __Namespace, __IsRemote));

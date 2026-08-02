@@ -21,6 +21,12 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 
+/**
+ * One row in the ChangesWidget list: a file entry (checkbox + status + path)
+ * or a persistent section header ("Staged"/"Unstaged"). Header rows carry no
+ * FileChange and are never selectable; file entries route their stage toggle
+ * to the owning ChangesWidget.
+ */
 class ChangeEntryWidget extends HBox implements IObject
 {
 	private static final int SPACING = 10;
@@ -31,6 +37,13 @@ class ChangeEntryWidget extends HBox implements IObject
 	private final CheckBox CommitCheckBox;
 	final boolean IsHeader;
 
+	/**
+	 * Creates a file entry for the given change. The checkbox is pre-checked for
+	 * staged files; toggling it stages/unstages through the owning widget.
+	 *
+	 * @param _ChangesWidget    the owning list widget (routes the stage toggle)
+	 * @param _FileChangeTarget the file change this row represents
+	 */
 	public ChangeEntryWidget(ChangesWidget _ChangesWidget, FileChange _FileChangeTarget)
 	{
 		ChangesWidget = _ChangesWidget;
@@ -64,6 +77,13 @@ class ChangeEntryWidget extends HBox implements IObject
 		getChildren().addAll(CommitCheckBox, statusText, pathFlow);
 	}
 
+	/**
+	 * Creates a persistent section header row ("Staged"/"Unstaged"). Headers
+	 * have no FileChange and keep an invisible checkbox so the row layout stays
+	 * aligned with file entries.
+	 *
+	 * @param _HeaderText the section title rendered in bold
+	 */
 	public ChangeEntryWidget(String _HeaderText)
 	{
 		ChangesWidget = null;
@@ -81,11 +101,13 @@ class ChangeEntryWidget extends HBox implements IObject
 		CommitCheckBox.setManaged(false);
 	}
 
+	/** @return true when the commit checkbox is ticked; header rows are never selected */
 	public boolean IsSelected()
 	{
 		return !IsHeader && CommitCheckBox.isSelected();
 	}
 
+	/** @return the file change backing this row, or null for a header row */
 	public FileChange GetFileChange()
 	{
 		return FileChangeTarget;
@@ -118,12 +140,22 @@ class ChangeEntryWidget extends HBox implements IObject
 	}
 }
 
+/**
+ * Staged/unstaged file-changes list for one repository. Entries are grouped
+ * under persistent header widgets, re-synced from GitDir on refresh, and the
+ * list selection drives the diff viewer in the owning GitDirWidget.
+ */
 public class ChangesWidget extends BaseWidget
 {
-	private static final double MIN_WIDTH = 400;
-	private static final double MIN_HEIGHT = 300;
 	private static final int SPACING = 10;
 	private static final int PADDING = 5;
+	/** Fallback uniform row height (px) used if the sample measurement fails */
+	private static final double DEFAULT_ROW_HEIGHT = 32.0;
+	/**
+	 * Extra height (px) added to the measured entry height to cover the default
+	 * {@code .list-cell} vertical padding (0.25em top + bottom in Modena).
+	 */
+	private static final double LIST_CELL_VERTICAL_PADDING = 8.0;
 
 	private final ListView<ChangeEntryWidget> ChangesListView;
 
@@ -131,13 +163,16 @@ public class ChangesWidget extends BaseWidget
 	private final ChangeEntryWidget StagedHeader = new ChangeEntryWidget("Staged");
 	private final ChangeEntryWidget UnstagedHeader = new ChangeEntryWidget("Unstaged");
 
-	public ChangesWidget(GitDir _GitDirTarget, GitDirProjectManagerWidget _GitDirProjectManagerWidgetTarget)
+	public ChangesWidget(GitDir _GitDirTarget, GitDirWidget _GitDirWidgetTarget)
 	{
-		super(_GitDirTarget, _GitDirProjectManagerWidgetTarget);
+		super(_GitDirTarget, _GitDirWidgetTarget);
 
-		// Create and configure ListView
+		// Create and configure ListView. The row height is pinned via
+		// setFixedCellSize (see ComputeFixedCellSize) as a workaround for the
+		// JavaFX VirtualFlow size-estimation regression that breaks scrolling
+		// for long lists (JDK-8296871 / JDK-8301375 / JDK-8328167).
 		ChangesListView = new ListView<>();
-		ChangesListView.setMinSize(MIN_WIDTH, MIN_HEIGHT);
+		ChangesListView.setFixedCellSize(ComputeFixedCellSize());
 
 		// Add ListView to the StackPane
 		getChildren().add(ChangesListView);
@@ -150,16 +185,45 @@ public class ChangesWidget extends BaseWidget
 			if (__NewItem != null && !__NewItem.IsHeader)
 			{
 				Debug.Log(Debug.ChangesCategory, "[Changes] Selection -> ReadFileChange(%s)\n", __NewItem.GetFileChange().GetFilePath());
-				GetGitDirProjectManagerWidgetTarget().ReadFileChange(__NewItem.GetFileChange());
+				GetGitDirWidgetTarget().ReadFileChange(__NewItem.GetFileChange());
 			}
 			else
 			{
 				Debug.Log(Debug.ChangesCategory, "[Changes] Selection (header/none) -> ReadFileChange(null)\n");
-				GetGitDirProjectManagerWidgetTarget().ReadFileChange(null);
+				GetGitDirWidgetTarget().ReadFileChange(null);
 			}
 		});
 
 		// Clicking empty space deselects nothing — selection is the sole driver of the diff viewer.
+	}
+
+	/**
+	 * Computes the uniform ListView row height by measuring a sample entry, then
+	 * returns it (plus the cell's own padding) for {@code setFixedCellSize}.
+	 * <p>
+	 * Pinning a fixed cell size makes VirtualFlow's scroll-range math exact. This
+	 * works around a JavaFX regression where, for long lists, the scrollbar maximum
+	 * is under-computed from estimated cell sizes, leaving the last entries
+	 * unreachable by scrolling (keyboard selection still reaches them, but the view
+	 * cannot render them). Falls back to a constant if the measurement fails.
+	 */
+	private double ComputeFixedCellSize()
+	{
+		try
+		{
+			var __Sample = new ChangeEntryWidget(this, new FileChange(
+				GetGitDirTarget().GetRepoRootPath().resolve("__row_height_probe__"),
+				EFileChangeStatus.Modified, EFileChangeScope.UNSTAGED, GetGitDirTarget()));
+			__Sample.applyCss();
+			double __Height = Math.ceil(__Sample.prefHeight(-1) + LIST_CELL_VERTICAL_PADDING);
+			// Sanity floor: a sub-20px measurement means the CSS probe failed to
+			// lay out (missing stylesheet/fonts), so fall back to the constant.
+			return __Height >= 20 ? __Height : DEFAULT_ROW_HEIGHT;
+		}
+		catch (Exception __Ex)
+		{
+			return DEFAULT_ROW_HEIGHT;
+		}
 	}
 
 	/**
@@ -235,6 +299,10 @@ public class ChangesWidget extends BaseWidget
 			}
 			__InsertIdx++;
 		}
+
+		// Ensure the virtual flow re-lays out after the in-place mutation so the
+		// scrollbar range (exact thanks to setFixedCellSize) covers the last entry.
+		ChangesListView.requestLayout();
 	}
 
 	/**
@@ -294,6 +362,17 @@ public class ChangesWidget extends BaseWidget
 		return selectedChanges;
 	}
 
+	/**
+	 * Stage (git add) or unstage (git reset HEAD --) a file through the
+	 * GitOperator queue with REFRESH_AND_UPDATE_UI, so the post-operation
+	 * refresh/UI broadcast is handled by the operator. The source checkbox is
+	 * disabled while the command runs; on failure it is re-enabled, its selection
+	 * reverted, and an error dialog shown.
+	 *
+	 * @param _Change          the file change to move between scopes
+	 * @param _ShouldBeStaged  true to stage, false to unstage
+	 * @param _SourceCheckBox  the checkbox the user toggled (disabled during the op)
+	 */
 	void ToggleStagedState(FileChange _Change, boolean _ShouldBeStaged, CheckBox _SourceCheckBox)
 	{
 		if (_Change == null || _Change.GetFilePath() == null)
