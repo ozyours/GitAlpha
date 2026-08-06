@@ -82,6 +82,19 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
+	 * Minimum pan-scrollbar thumb size as a fraction of the total content width.
+	 * The thumb is normally {@code viewport / content}, so an extremely wide diff
+	 * would shrink it to an un-draggable sliver; this floor keeps it grabbable.
+	 */
+	private static final double PAN_MIN_VISIBLE_FRACTION = 0.05;
+	/**
+	 * Maximum pan-scrollbar thumb size as a fraction of the total content width.
+	 * When the content barely overflows the pane the proportional thumb would
+	 * swallow the whole track; this cap leaves a visible scroll sliver.
+	 */
+	private static final double PAN_MAX_VISIBLE_FRACTION = 0.98;
+
+	/**
 	 * A segment of text with a flag indicating whether it is part of a changed
 	 * (added/removed) span in an intra-line diff.
 	 */
@@ -663,18 +676,51 @@ public class TextViewerWidget extends BaseWidget
 	 * Recomputes the horizontal pan range from the current content width and the
 	 * pane width, and shows/hides the bottom scrollbar accordingly.
 	 * <p>
+	 * The scrollbar's {@code max} is set to {@code contentWidth} (not
+	 * {@code maxPan}) because JavaFX internally clamps the effective scroll
+	 * range to {@code [0, max - visibleAmount]}.  When {@code visibleAmount}
+	 * equals the viewport width, {@code effectiveMax = contentWidth - viewport
+	 * = maxPan}, allowing the full content to be revealed at max scroll.
+	 * The {@code visibleAmount} is proportional ({@code viewport / content}),
+	 * clamped between {@link #PAN_MIN_VISIBLE_FRACTION} and
+	 * {@link #PAN_MAX_VISIBLE_FRACTION} so the thumb stays draggable for
+	 * extremely wide diffs and leaves a visible scroll sliver when the content
+	 * barely overflows.
+	 * <p>
 	 * <strong>Must be called on the JavaFX Application Thread.</strong>
 	 */
 	private void UpdateScrollRange()
 	{
-		double __MaxPan = Math.max(0, DiffContentWidth.get() - DiffListView.getWidth());
+		double __Content = DiffContentWidth.get();
+		double __Viewport = DiffListView.getWidth();
+		double __MaxPan = Math.max(0, __Content - __Viewport);
 		boolean __NeedsBar = __MaxPan > 0;
 		DiffScrollBar.setVisible(__NeedsBar);
 		DiffScrollBar.setManaged(__NeedsBar);
-		DiffScrollBar.setMax(__MaxPan);
-		DiffScrollBar.setBlockIncrement(Math.max(50, DiffListView.getWidth() * 0.8));
-		if (DiffScrollBar.getValue() > __MaxPan)
-			DiffScrollBar.setValue(__MaxPan);
+
+		// Set max = contentWidth (not maxPan). JavaFX internally clamps the
+		// effective scroll range to [0, max - visibleAmount], so setting
+		// max = contentWidth yields effectiveMax = contentWidth - visibleAmount.
+		// When visibleAmount = viewport, effectiveMax = contentWidth - viewport
+		// = maxPan, allowing the full content to be revealed at max scroll.
+		DiffScrollBar.setMax(__Content);
+
+		// The thumb size reflects how much of the total content is visible.
+		// Proportional: viewport / content. Clamped between MIN and MAX fractions
+		// so a very wide diff keeps a draggable thumb and a near-fitting one
+		// keeps a visible scroll sliver.
+		double __Visible = Math.min(
+				Math.max(__Viewport, __Content * PAN_MIN_VISIBLE_FRACTION),
+				__Content * PAN_MAX_VISIBLE_FRACTION);
+		DiffScrollBar.setVisibleAmount(__Visible);
+
+		// Block increment = ~80% of viewport, capped at the remaining pan range.
+		DiffScrollBar.setBlockIncrement(Math.min(__Viewport * 0.8, __MaxPan));
+
+		// Clamp the current value if it exceeds the new effective range.
+		double __EffectiveMax = __Content - __Visible;
+		if (DiffScrollBar.getValue() > __EffectiveMax)
+			DiffScrollBar.setValue(Math.max(0, __EffectiveMax));
 	}
 
 	/**

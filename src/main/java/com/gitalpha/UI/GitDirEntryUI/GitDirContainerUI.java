@@ -18,7 +18,7 @@ public class GitDirContainerUI extends StackPane
         GridPaneInstance.setVgap(8);
         for (var e : Container.GetGitDirs())
         {
-            var entry = new GirDirEntryUI(e, TabButton);
+            var entry = new GitDirEntryUI(e, TabButton);
             GridPaneInstance.getChildren().add(entry);
         }
         getChildren().add(GridPaneInstance);

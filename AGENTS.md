@@ -7,7 +7,7 @@ mvn compile                    # compile
 mvn verify                     # compile + package (shaded fat jar via maven-shade-plugin)
 ```
 
-- Java 21, JavaFX 21, no test framework, no formatter/linter config
+- Java 26, JavaFX 21, no test framework, no formatter/linter config
 - Single-module Maven project; fat-jar main class: `com.gitalpha.UI.MainJavaFx`
 - Only dependency beyond JavaFX: `org.json:json:20250517`
 - JavaFX classifier `win` — **Windows-only build**
@@ -19,15 +19,15 @@ mvn verify                     # compile + package (shaded fat jar via maven-sha
 ```
 MainJavaFx.main() → launch() → start(Stage)
   ├─ AlphaEngine.Instance.LoadSession()        // ~/.gitalpha/session.json → open/recent repos + window bounds
-  ├─ new AlphaUI()                             // sets static AlphaUI.Instance; StackPane holding a TabPane
-  ├─ Scene(AlphaUI.Instance, 800, 720)         // stage title "Git Alpha"; min window 800×720 enforced
+  ├─ new AlphaUI()                             // sets static AlphaUI.Instance; BorderPane: menu bar + quick bar on top, TabPane centered
+  ├─ Scene(AlphaUI.Instance, 800, 780)         // stage title "Git Alpha"; min window 800×780 enforced
   └─ stop(): AlphaEngine.Instance.SaveSession()
 ```
 
 - `com.gitalpha.Main` has an **empty** `main()` — **not** the real entrypoint; use `MainJavaFx`
 - Window position/size/maximized are persisted via stage property listeners (position skipped while maximized)
 - Window focus in/out and tab selection fire `AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh(reason, gitDirOrNull)` — a `null` target refreshes **all** open project managers
-- Stage min size (800×720) is set **before** the saved-bounds restore so a previously-saved smaller window is clamped to the layout floor
+- Stage min size (800×780 = 720px layout floor + ~60px top chrome, height floor clamped to the primary screen's visual bounds for small displays) is set **before** the saved-bounds restore so a previously-saved smaller window is clamped to the layout floor
 
 ## Architecture
 
@@ -40,7 +40,7 @@ AlphaEngine (singleton: AlphaEngine.Instance — never construct a second)
   └─ Event lists (WeakReference, pruned on dead refs):
        IOpenGitDirEvent / ICloseGitDirEvent / IRefreshGitDirEvent   (com.gitalpha.Engine.GitDirContainer)
 
-AlphaUI (StackPane) → TabPane (trailing "+" tab creates new tabs)
+AlphaUI (BorderPane) → top: TopMenuBar + QuickCommandBar (placeholder entries only, see ROADMAP.md; shared "not implemented" notice: PlaceholderNotice); center: TabPane (trailing "+" tab creates new tabs)
   ├─ GitDirTabButton (extends Tab, implements IObject) → ProjectBrowser (path field + recent repo list)
   └─ OpenProject(gitDir) → GitDirWidget (GridPane)     ← BaseWidget subclasses
        ├─ BranchWidget      local/remote branch TreeViews (active branch: dot + bold green + tooltip)

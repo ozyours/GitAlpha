@@ -8,16 +8,24 @@ import com.gitalpha.Engine.GitDirContainer.IOpenGitDirEvent;
 import com.gitalpha.Function.GitDirFunction;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
+import javafx.geometry.Insets;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
-import javafx.scene.layout.StackPane;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.VBox;
 
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
-public class AlphaUI extends StackPane
+/**
+ * Root layout of the main window: a BorderPane whose top chrome holds the
+ * menu + quick command bars and whose center holds the open-project TabPane.
+ * Owns the tab-per-project binding map and restores the saved tabs on startup.
+ */
+public class AlphaUI extends BorderPane
 {
+	/** Singleton root UI, assigned in the constructor; the app reaches the window layout through this. */
 	public static AlphaUI Instance;
 
 	public AlphaUI()
@@ -27,8 +35,15 @@ public class AlphaUI extends StackPane
 
 		OpenTabsByProjectPath = new HashMap<>();
 
+		// Top chrome: the placeholder menu bar and quick command bar sit above
+		// the tab pane (BorderPane: top = chrome, center = tabs). A 64px bottom
+		// padding separates the quick command bar from the tab pane below.
+		VBox __TopChrome = new VBox(new TopMenuBar(), new QuickCommandBar());
+		__TopChrome.setPadding(new Insets(0, 0, 8, 0));
+		setTop(__TopChrome);
+
 		TabPaneInstance = new TabPane();
-		getChildren().add(TabPaneInstance);
+		setCenter(TabPaneInstance);
 
 		TabPaneInstance.getTabs().add(new GitDirTabButton(this, null));
 		TabPaneInstance.setTabMaxWidth(AlphaSettings.Get().GetSettingEntry(AlphaSettings.TabMaxSize).GetDefaultValue_AsInteger());

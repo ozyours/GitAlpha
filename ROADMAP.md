@@ -68,6 +68,14 @@ Items that were discussed and have been committed to `master`.
       states moved to a layered `OverlayPane`; stale-response guards kept; `SetDiffRows` calls
       `refresh()` so same-count diffs rebuild visible cells (`c998ac7`)
 
+### Implemented, awaiting commit
+
+- [ ] **Misspelled class rename** — `UI/GitDirEntryUI/GirDirEntryUI.java` renamed to `GitDirEntryUI`
+      (class, constructor, filename) with the `GitDirContainerUI` reference updated (staged, uncommitted)
+- [ ] **Top menu bar** — `AlphaUI` root restructured from `StackPane` to `BorderPane`; placeholder
+      `TopMenuBar` (File / Git / Settings / Help menus) + placeholder `QuickCommandBar` button row
+      above the tab pane; window floor raised to 800×780 for the top chrome (uncommitted)
+
 ---
 
 ## Pending Plan
@@ -86,6 +94,23 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
       must not replace the normal stash flow — restore points remain visible/usable via the regular
       stash UI
 - [ ] **Tags** — no tag listing/creation/deletion
+
+### Branch widget
+
+- [ ] **Dropdown local + menu remote branches** — `BranchWidget` renders two side-by-side `TreeView`s
+      (`BranchWidget.java:27-28,51-53`) inside the pinned 140px branch row; planned redesign: local
+      branches become a dropdown (`ComboBox`) with the active branch as current value (full-path
+      comparison via `GetActiveBranch()`, `BranchWidget.java:231-232`) and checkout on selection
+      (`ChangeBranch` through the operator queue, `:349`); remote branches move into a compact menu
+      (`MenuButton`/`ComboBox`) instead of a second tree. Done = checkout semantics preserved,
+      namespaced branches (`feature/foo`) still resolvable, row height may shrink below 140px —
+      re-check `GitDirWidget` RowConstraints so the freed space feeds the changes list
+- [ ] **Link local ↔ remote branch (set upstream)** — no upstream concept exists; context-menu items
+      `CreateNewBranch` / `DeleteBranch` / `PushBranch` / `PullBranch` are TODO stubs
+      (`BranchWidget.java:149-182`). Done = a branch-setting menu linking a local branch to a remote
+      via `git branch --set-upstream-to=<remote>/<branch>` through
+      `GitOperator.RunGitOp(..., REFRESH_AND_UPDATE_UI, callback)`; the local dropdown shows the
+      configured upstream (e.g. `main → origin/main`)
 
 ### Known issues
 
@@ -111,15 +136,57 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 
 ### App shell / UI
 
-- [ ] **Top menu bar** — no `MenuBar` exists anywhere; `AlphaUI` is a `StackPane` whose only child is
-      the `TabPane` (`AlphaUI.java:30-31`) and the scene root is `AlphaUI.Instance` directly
-      (`MainJavaFx.java:31`). Add a `MenuBar` (e.g. File / Git / Settings / Help) above the tab pane —
-      requires restructuring `AlphaUI`'s root to a `BorderPane` (menu on top, tabs in center) and
-      rechecking the window floor. Natural home for the pending Settings UI item above
-- [ ] **Quick command bar** — a button row under the top menu bar whose command set is assigned in
-      settings. `AlphaSettings` currently holds only fixed entries (`GitPath`, `RecentSize`,
-      `TabMaxSize`) and `ESettingEntryType` supports only String/Bool/Integer/Float — no user-defined
-      command list exists. Add a settings-defined command list (each entry = display name + git args)
-      and render it as quick-action buttons; execution goes through the existing
-      `GitOperator.RunGitOp(cmd, policy, callback)` queue. Depends on the top menu bar + Settings UI
-      items above
+- [ ] **Menu/quick-bar functionality** — `TopMenuBar` and `QuickCommandBar` exist with placeholder
+      entries only (see "Implemented, awaiting commit" above): every entry shows a "not implemented"
+      notice. Done = real File (open/quit), Git (fetch/pull/push/branch/stash/tags), Settings and Help
+      (about) entries wired through the `GitOperator.RunGitOp(cmd, policy, callback)` queue
+- [ ] **Command abstraction + quick command bar** — decided design: `abstract class BaseCommand`
+      (metadata `GetId()` / `GetDisplayName()` / `GetDescription()` + `abstract void
+      Execute(CommandContext)`), one subclass per command overriding `Execute` — git commands run
+      through `GitOperator.RunGitOp(args, policy, callback)`, program commands (e.g. refresh) call
+      app methods. Discovery: one-time reflection scan of the command package, cached in a
+      `CommandCatalog`, no-arg constructors required. Persistence: stable `GetId()` string (never
+      the class name) saved in `AlphaSettings`, resolved via the catalog on load — survives class
+      renames, no `Class.forName`. `CommandContext` passes the project + UI hooks; `ERefreshPolicy`
+      is per command. The `QuickCommandBar` is currently a fixed row of placeholder buttons; the
+      same model also serves the `TopMenuBar` entries. Depends on the Settings UI item below
+
+### Project browser & repo list
+
+- [ ] **ProjectBrowser improvements** — path entry is a bare `TextField` + "Open" button with no folder
+      picker and no Enter-to-submit (no `setOnAction` on the field, `ProjectBrowser.java:30-36`); the
+      recent list is a `TilePane` built once in the constructor that never updates when the recent
+      container changes and overflows without a `ScrollPane` (`GitDirContainerUI.java:16-23`). Done =
+      `DirectoryChooser` browse button, Enter submits, live-updating scrollable recent list with an
+      empty state
+- [ ] **GitDir entry UI/UX** — `GitDirEntryUI` shows only the raw repo-root path and an "Open" button
+      (`GitDirEntryUI.java:44-47`); no repo name, no hover/click affordance, no remove-from-recent or
+      context menu, and the entry list never rebuilds on container changes. Done = row with repo name
+      + path, click-to-open, context menu (remove/rename), live rebuild
+- [ ] **Custom categorical GitDir** — no category concept exists: `GitDir.OnSerialize()` persists only
+      the path (`GitDir.java`), `GitDirContainer` holds a flat `List<GitDir>` with no grouping
+      (`GitDirContainer.java:20`), and the session stores only `{"D": [...]}`. Done = user-assignable
+      per-repo category persisted in `~/.gitalpha/session.json`, grouped/filterable rendering in the
+      browser and recent list
+- [ ] **UX polish** — invalid-path feedback uses blocking `Alert.showAndWait()`
+      (`ProjectBrowser.java:103-110`); no `DirectoryChooser`/`FileChooser` or folder drag-and-drop
+      exists anywhere in the codebase; Open buttons use `setOnMouseClicked` (fires on any mouse
+      button) instead of `setOnAction` (`ProjectBrowser.java:36`, `GitDirEntryUI.java:23`). Done =
+      inline validation, browse/drag-drop, standardized button actions
+
+### Changes list & staging
+
+- [ ] **Multi-select & bulk checkbox toggle** — `ChangesListView` uses the default single selection
+      mode (no `SelectionMode.MULTIPLE` anywhere in the codebase, `ChangesWidget.java:174`); each
+      row's checkbox only toggles its own file (`setOnAction` → `ToggleStagedState(FileChange,
+      boolean, CheckBox)`, `ChangesWidget.java:60-63,376`) and no batch `git add`/`git reset` path
+      exists. Done = enable `SelectionMode.MULTIPLE`; with several rows selected, toggling any one
+      checkbox checks/unchecks all selected rows and stages/unstages them in one operator-queue
+      batch (`RunGitOp(..., REFRESH_AND_UPDATE_UI, ...)`); `GetSelectedChanges()`
+      (`ChangesWidget.java:352`) already collects the checked rows but is unused
+- [ ] **Section select-all checkboxes** — the "Staged"/"Unstaged" header rows are built by the header
+      `ChangeEntryWidget(String)` constructor, which creates only an **invisible** checkbox
+      (`CommitCheckBox.setVisible(false)`/`setManaged(false)`, `ChangesWidget.java:99-101`); no
+      visible check-all control exists per section. Done = a real checkbox in each header
+      (`ChangesWidget.java:163-164`) that checks/unchecks all entries in its section and batches the
+      `git add`/`git reset` through the operator queue

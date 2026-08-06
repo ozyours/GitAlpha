@@ -11,9 +11,9 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
 
-public class GirDirEntryUI extends StackPane
+public class GitDirEntryUI extends StackPane
 {
-    public GirDirEntryUI(GitDir _GitDir, GitDirTabButton _TabButton)
+    public GitDirEntryUI(GitDir _GitDir, GitDirTabButton _TabButton)
     {
         assert _GitDir != null;
         GitDirTarget = _GitDir;
