@@ -67,14 +67,12 @@ Items that were discussed and have been committed to `master`.
       `ScrollBar` pans wide rows (`DiffContentWidth` / `PanOffset`); loading/guard/prompt/error
       states moved to a layered `OverlayPane`; stale-response guards kept; `SetDiffRows` calls
       `refresh()` so same-count diffs rebuild visible cells (`c998ac7`)
-
-### Implemented, awaiting commit
-
-- [ ] **Misspelled class rename** — `UI/GitDirEntryUI/GirDirEntryUI.java` renamed to `GitDirEntryUI`
-      (class, constructor, filename) with the `GitDirContainerUI` reference updated (staged, uncommitted)
-- [ ] **Top menu bar** — `AlphaUI` root restructured from `StackPane` to `BorderPane`; placeholder
-      `TopMenuBar` (File / Git / Settings / Help menus) + placeholder `QuickCommandBar` button row
-      above the tab pane; window floor raised to 800×780 for the top chrome (uncommitted)
+- [x] **Top menu bar + quick command bar placeholders** — `AlphaUI` root restructured from `StackPane`
+      to `BorderPane`; placeholder `TopMenuBar` (File / Git / Settings / Help) + `QuickCommandBar`
+      button row above the tab pane, sharing a `PlaceholderNotice`; window floor raised to 800×780
+      (screen-clamped min height); Java compiler source/target bumped to 26 (`56f0d4b`)
+- [x] **Misspelled class rename** — `UI/GitDirEntryUI/GirDirEntryUI.java` renamed to `GitDirEntryUI`
+      (class, constructor, filename) with the `GitDirContainerUI` reference updated (`56f0d4b`)
 
 ---
 
