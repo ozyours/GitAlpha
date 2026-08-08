@@ -58,6 +58,12 @@ public class GitDir implements ISerializable
 	 */
 	private final GitOperator Operator = new GitOperator(this, AlphaEngine.Instance);
 
+	/**
+	 * Stash facade for this repository: queues stash mutations through
+	 * {@link #Operator} and runs read-only stash queries synchronously.
+	 */
+	private final GitStashOperator StashOperator = new GitStashOperator(this);
+
 	/** @return the stored .git directory path */
 	public Path GetGitDirPath()
 	{
@@ -130,6 +136,14 @@ public class GitDir implements ISerializable
 	public GitOperator GetOperator()
 	{
 		return Operator;
+	}
+
+	/**
+	 * @return the {@link GitStashOperator} that manages stash operations for this GitDir
+	 */
+	public GitStashOperator GetStashOperator()
+	{
+		return StashOperator;
 	}
 
 	/**

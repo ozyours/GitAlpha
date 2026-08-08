@@ -27,4 +27,6 @@ module com.gitalpha
     exports com.gitalpha.UI.GitDirTab;
     exports com.gitalpha.UI.GitDirEntryUI;
     opens com.gitalpha.UI.GitDirEntryUI to javafx.graphics;
+    exports com.gitalpha.UI.Stash;
+    opens com.gitalpha.UI.Stash to javafx.graphics;
 }

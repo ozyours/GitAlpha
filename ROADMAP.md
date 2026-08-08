@@ -73,6 +73,24 @@ Items that were discussed and have been committed to `master`.
       (screen-clamped min height); Java compiler source/target bumped to 26 (`56f0d4b`)
 - [x] **Misspelled class rename** — `UI/GitDirEntryUI/GirDirEntryUI.java` renamed to `GitDirEntryUI`
       (class, constructor, filename) with the `GitDirContainerUI` reference updated (`56f0d4b`)
+### Implemented, awaiting commit
+
+- [ ] **Stash feature** — `StashWidget` (separate `Stage`) with three-column layout: stash list,
+      file-change list, diff viewer; bottom action buttons (Pop/Drop/Apply/Rename/Save/Help/Close);
+      `StashEntry` data class parsed from `git stash list`; `TopMenuBar` Git → Stash… wired to open
+      the stash window for the active project; git stash operations (push/pop/drop/apply/rename)
+      run through `GitOperator.RunGitOp` with `REFRESH_AND_UPDATE_UI`; stash file list and diff
+      fetched on demand via `git stash show` (uncommitted)
+- [ ] **Stash window polish** — window position/size/maximized and column divider positions persist
+      per repo in the session file (`StashWindowState`, saved under `"StashWindowStates"`; bounds
+      only stored while windowed so a maximized close can't clobber the windowed restore size;
+      restore is screen-clamped); the diff viewer is the shared virtualized `TextViewerWidget`
+      (`SetRawDiffText` renders a raw unified diff) instead of a plain `TextArea`; all stash git
+      commands moved into `GitCMDConstant`; per-file diffs use `git diff <stash>^ <stash> -- <path>`
+      because `git stash show -p` accepts no pathspec; **commit-preserving rename** recreates the
+      stash commit via `commit-tree` + `stash store` + `stash drop stash@{N+1}` (with rollback on
+      drop failure) instead of the destructive drop+push; stale async loads are dropped via
+      per-selection version counters (uncommitted)
 
 ---
 
@@ -86,7 +104,6 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
       `DeleteBranch`); checkout already works (double-click and context menu, with error alert)
 - [ ] **Push / Pull** — context-menu items are TODO stubs (`PushBranch` / `PullBranch` are empty)
 - [ ] **Fetch** — no fetch operation exists
-- [ ] **Stash** — no stash support (create/apply/drop)
 - [ ] **Restore points (stash-based)** — higher-level feature built on `git stash`: save current
       changes as a named restore point, later restore the working tree to a previous restore point;
       must not replace the normal stash flow — restore points remain visible/usable via the regular
@@ -128,6 +145,15 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 ### Diff viewer / UX
 
 - [ ] **Diff enhancements** — e.g. side-by-side mode, syntax highlighting, word-wrap toggle
+- [ ] **Jupyter notebook diff view** — `GitDirWidget` hard-wires one `TextViewerWidget` for every
+      file (`GitDirWidget.java:42,76,128`), so a `.ipynb` renders as an unreadable unified diff of
+      JSON; notebooks embedding base64 image output can also trip the 1 MB `LARGE_FILE` guard
+      (`FileChange.java:25`). Planned: a `FileViewerWidget` dispatcher replacing the direct
+      `new TextViewerWidget(...)` that picks by file type — a new `JupyterNotebookViewerWidget` for
+      `.ipynb` (parse the old/new JSON blobs with the bundled `org.json`, render a cell-by-cell
+      diff: code/markdown cells, outputs, execution counts) or the existing `TextViewerWidget` for
+      text files. Done = the selection-driven `SetFileChange` flow, load guards, and the
+      refresh-stable diff survive the dispatch
 - [ ] **Commit history / log view** — no `git log` visualization exists
 - [ ] **Settings for refresh behavior** — auto-refresh frequency / toggle (currently refresh is
       event-driven only)
@@ -135,7 +161,7 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 ### App shell / UI
 
 - [ ] **Menu/quick-bar functionality** — `TopMenuBar` and `QuickCommandBar` exist with placeholder
-      entries only (see "Implemented, awaiting commit" above): every entry shows a "not implemented"
+      entries only (committed as placeholders in `56f0d4b`): every entry shows a "not implemented"
       notice. Done = real File (open/quit), Git (fetch/pull/push/branch/stash/tags), Settings and Help
       (about) entries wired through the `GitOperator.RunGitOp(cmd, policy, callback)` queue
 - [ ] **Command abstraction + quick command bar** — decided design: `abstract class BaseCommand`
@@ -148,6 +174,23 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
       renames, no `Class.forName`. `CommandContext` passes the project + UI hooks; `ERefreshPolicy`
       is per command. The `QuickCommandBar` is currently a fixed row of placeholder buttons; the
       same model also serves the `TopMenuBar` entries. Depends on the Settings UI item below
+
+### Project widget state
+
+- [ ] **Deleted project handling** — an open tab whose repo path is deleted/moved while open
+      silently renders empty lists: `AlphaEngine.SanitizeGitDirContainer` removes invalid repos
+      only at session load (`AlphaEngine.java:242-265`), and the `GitDirWidget` refresh callback
+      ignores `__Ok`/`__Err` (`GitDirWidget.java:141-151`) even though
+      `IGitOperationCallback.OnCompleted` carries the error. Done = on refresh failure with an
+      invalid path the tab shows a "project deleted" state with a button to locate the new path
+      (re-point the `GitDir` via a `DirectoryChooser`) and a button to close the tab
+- [ ] **Busy indicator** — no UI feedback exists while the `GitOperator` is working: queue/runner
+      state is internal (`GitOperator.java:49` exposes only `RefreshCanceled`; no `IsBusy` /
+      `IsWorking` property anywhere), and `GitDirWidget` fires `GitDirTarget.Refresh(...)` without
+      any start/stop indication (`GitDirWidget.java:141-151`). Done = `GitOperator` exposes a
+      working state (queue non-empty or refresh in flight) and `GitDirWidget` shows an indicator
+      (spinner / status strip in the left pane) driven on the FX thread from op start and
+      `OnCompleted`
 
 ### Project browser & repo list
 
@@ -174,14 +217,11 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 
 ### Changes list & staging
 
-- [ ] **Multi-select & bulk checkbox toggle** — `ChangesListView` uses the default single selection
-      mode (no `SelectionMode.MULTIPLE` anywhere in the codebase, `ChangesWidget.java:174`); each
-      row's checkbox only toggles its own file (`setOnAction` → `ToggleStagedState(FileChange,
-      boolean, CheckBox)`, `ChangesWidget.java:60-63,376`) and no batch `git add`/`git reset` path
-      exists. Done = enable `SelectionMode.MULTIPLE`; with several rows selected, toggling any one
-      checkbox checks/unchecks all selected rows and stages/unstages them in one operator-queue
-      batch (`RunGitOp(..., REFRESH_AND_UPDATE_UI, ...)`); `GetSelectedChanges()`
-      (`ChangesWidget.java:352`) already collects the checked rows but is unused
+- [x] **Multi-select & bulk checkbox toggle** — `ChangesListView` enables `SelectionMode.MULTIPLE`;
+      the diff viewer follows the focused (last-clicked) item via `selectedItemProperty`; with several
+      rows selected, toggling any one checkbox checks/unchecks all selected rows and stages/unstages
+      them in one operator-queue batch (`RunGitOp(..., REFRESH_AND_UPDATE_UI, ...)`); target paths use
+      `:(literal)` pathspec magic so filenames with glob characters match literally
 - [ ] **Section select-all checkboxes** — the "Staged"/"Unstaged" header rows are built by the header
       `ChangeEntryWidget(String)` constructor, which creates only an **invisible** checkbox
       (`CommitCheckBox.setVisible(false)`/`setManaged(false)`, `ChangesWidget.java:99-101`); no

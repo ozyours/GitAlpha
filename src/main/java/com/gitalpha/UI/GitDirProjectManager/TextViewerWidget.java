@@ -7,6 +7,7 @@ import com.gitalpha.Type.FileChange;
 import javafx.application.Platform;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.SimpleDoubleProperty;
+import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -41,17 +42,23 @@ import java.util.regex.Pattern;
  */
 public class TextViewerWidget extends BaseWidget
 {
-	/** Monospaced font used for all diff text */
+	/** Monospaced font used for diff content rows */
 	private static final Font MONO_FONT = Font.font("Consolas", 13);
+	/** Larger monospaced font for the stats header bar */
+	private static final Font MONO_STATS_FONT = Font.font("Consolas", 16);
 
 	/** Background colour for added lines */
 	private static final String ADDED_BG = "#e6ffec";
 	/** Left-side bar colour for added lines */
 	private static final String ADDED_BAR = "#2da44e";
+	/** Foreground colour for the added-line count in the stats header */
+	private static final Color ADDED_FG = Color.rgb(45, 164, 78);
 	/** Background colour for removed lines */
 	private static final String REMOVED_BG = "#ffebe9";
 	/** Left-side bar colour for removed lines */
 	private static final String REMOVED_BAR = "#cf222e";
+	/** Foreground colour for the removed-line count in the stats header */
+	private static final Color REMOVED_FG = Color.rgb(207, 34, 46);
 
 	/** Background for changed characters within an added line (deeper green) */
 	private static final String ADDED_INTRA_BG = "#abf2bc";
@@ -136,6 +143,18 @@ public class TextViewerWidget extends BaseWidget
 	/** Overlay on top of the diff list for loading / guard messages / the large-file prompt / error messages */
 	private final StackPane OverlayPane;
 	/**
+	 * Header bar above the diff list showing the current diff's added/removed
+	 * line counts ({@code +N} in green, {@code -M} in red). Kept invisible and
+	 * un-managed until a diff is rendered, so it collapses to no height.
+	 */
+	private final HBox hbox_StatsHeader;
+	/** Added-line count text ({@code +N}) shown in {@link #hbox_StatsHeader} */
+	private final Text txt_AddedCount;
+	/** Removed-line count text ({@code -M}) shown in {@link #hbox_StatsHeader} */
+	private final Text txt_RemovedCount;
+	/** Static "Changes:" label shown in {@link #hbox_StatsHeader} */
+	private final Text txt_StatsLabel;
+	/**
 	 * The file change whose diff is currently displayed; null if none.
 	 * Volatile because it is written on the JavaFX thread and read on the
 	 * ForkJoinPool thread (stale-response checks).
@@ -151,6 +170,23 @@ public class TextViewerWidget extends BaseWidget
 	 * content only pans when this exceeds the pane width.
 	 */
 	private final DoubleProperty DiffContentWidth = new SimpleDoubleProperty(0);
+	/**
+	 * Token of the latest raw-diff request. Written on the JavaFX thread when a
+	 * new diff is requested; the off-thread parse/prepare completion compares it
+	 * against the captured token to drop stale responses (same role as
+	 * {@link #FileChangeTarget} for file-change loads).
+	 */
+	private volatile String RawDiffToken = null;
+
+	/**
+	 * Builds a standalone viewer for a repository, used outside a project widget
+	 * (e.g. the Stash window). The viewer needs no hosting {@link GitDirWidget}
+	 * — it only reads the repo for row-height measurement.
+	 */
+	public TextViewerWidget(GitDir _GitDirTarget)
+	{
+		this(_GitDirTarget, null);
+	}
 
 	/**
 	 * Builds the viewer: a virtualized {@link ListView} pinned to a fixed cell
@@ -206,9 +242,29 @@ public class TextViewerWidget extends BaseWidget
 		// Re-fit the pan range when the pane is resized.
 		DiffListView.widthProperty().addListener((__Obs, __Old, __New) -> UpdateScrollRange());
 
+		// Stats header bar (added/removed line counts). Starts hidden and
+		// un-managed so it collapses to no height until a diff is rendered
+		// (see UpdateStatsHeader); kept in the same VBox as the list and pan
+		// bar so it sits above the diff and is never panned.
+		txt_StatsLabel = new Text("Changes:");
+		txt_StatsLabel.setFont(MONO_STATS_FONT);
+		txt_StatsLabel.setFill(Color.GRAY);
+		txt_AddedCount = new Text("+0");
+		txt_AddedCount.setFont(MONO_STATS_FONT);
+		txt_AddedCount.setFill(ADDED_FG);
+		txt_RemovedCount = new Text("-0");
+		txt_RemovedCount.setFont(MONO_STATS_FONT);
+		txt_RemovedCount.setFill(REMOVED_FG);
+		hbox_StatsHeader = new HBox(8, txt_StatsLabel, txt_AddedCount, txt_RemovedCount);
+		hbox_StatsHeader.setAlignment(Pos.CENTER_LEFT);
+		hbox_StatsHeader.setPadding(new Insets(4, 8, 4, 8));
+		hbox_StatsHeader.setStyle("-fx-border-color: transparent transparent #d0d7de transparent; -fx-border-width: 0 0 1 0;");
+		hbox_StatsHeader.setManaged(false);
+		hbox_StatsHeader.setVisible(false);
+
 		// Stack the list above the pan scrollbar; the list grows to fill the
 		// remaining height while the bar stays pinned to the bottom edge.
-		VBox __Container = new VBox(DiffListView, DiffScrollBar);
+		VBox __Container = new VBox(hbox_StatsHeader, DiffListView, DiffScrollBar);
 		VBox.setVgrow(DiffListView, Priority.ALWAYS);
 		getChildren().add(__Container);
 
@@ -388,9 +444,53 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
+	 * Renders raw unified-diff text (e.g. {@code git diff <stash>^ <stash>} output)
+	 * through the same virtualized, intra-line-highlighted pipeline as
+	 * {@link #SetFileChange}. The diff text is parsed and prepared off the JavaFX
+	 * thread; stale responses (a newer request superseding this one) are dropped.
+	 * A {@code null} or blank payload clears the viewport.
+	 * <p>
+	 * <strong>Must be called on the JavaFX Application Thread.</strong>
+	 */
+	public void SetRawDiffText(String _DiffText)
+	{
+		String __Token = Long.toString(System.nanoTime());
+		RawDiffToken = __Token;
+		FileChangeTarget = null;   // raw diffs bypass the FileChange path
+		ClearDiffView();
+
+		if (_DiffText == null || _DiffText.isBlank())
+		{
+			HideOverlay();
+			return;
+		}
+
+		ShowLoadingIndicator();
+		CompletableFuture.supplyAsync(() ->
+				PrepareDiffRows(FileChange.ParseDiff(_DiffText)))
+			.thenAcceptAsync(__Prepared -> Platform.runLater(() ->
+			{
+				if (!java.util.Objects.equals(RawDiffToken, __Token))
+					return;   // stale — a newer diff replaced this request
+				SetDiffRows(__Prepared);
+				HideOverlay();
+			}))
+			.exceptionally(__Ex ->
+			{
+				Platform.runLater(() ->
+				{
+					if (java.util.Objects.equals(RawDiffToken, __Token))
+						RenderErrorMessage(__Ex);
+				});
+				return null;
+			});
+	}
+
+	/**
 	 * Empties the diff list and resets the horizontal pan state (content width,
-	 * pan position and scrollbar visibility). Called when switching targets so
-	 * no stale rows or a stale scrollbar linger behind the overlay; also called
+	 * pan position and scrollbar visibility) and the stats header (back to
+	 * {@code +0/-0}, hidden). Called when switching targets so no stale rows, a
+	 * stale scrollbar, or a stale count linger behind the overlay; also called
 	 * for a {@code null} target to blank the viewport entirely.
 	 * <p>
 	 * <strong>Must be called on the JavaFX Application Thread.</strong>
@@ -400,6 +500,7 @@ public class TextViewerWidget extends BaseWidget
 		DiffListView.getItems().clear();
 		DiffContentWidth.set(0);
 		DiffScrollBar.setValue(0);
+		UpdateStatsHeader(0, 0);
 		UpdateScrollRange();
 	}
 
@@ -553,6 +654,19 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
+	 * Renews the stats header with the given added/removed counts, hiding it
+	 * (un-managed, so it collapses) when there is nothing to report.
+	 */
+	private void UpdateStatsHeader(int _Added, int _Removed)
+	{
+		boolean __HasStats = _Added > 0 || _Removed > 0;
+		txt_AddedCount.setText("+" + _Added);
+		txt_RemovedCount.setText("-" + _Removed);
+		hbox_StatsHeader.setVisible(__HasStats);
+		hbox_StatsHeader.setManaged(__HasStats);
+	}
+
+	/**
 	 * Pairs {@code -} / {@code +} diff lines and computes intra-line (word-level)
 	 * diffs for each pair.  Returns a list of plain-data {@link PreparedRow}
 	 * records that can be handed to {@link #SetDiffRows}.
@@ -644,10 +758,17 @@ public class TextViewerWidget extends BaseWidget
 	 */
 	private void SetDiffRows(List<PreparedRow> _Prepared)
 	{
-		// Determine the widest line number for padding alignment
+		// Determine the widest line number for padding alignment and, in the
+		// same pass, count the added/removed rows for the stats header.
 		int __MaxNum = 0;
+		int __Added = 0;
+		int __Removed = 0;
 		for (var __Row : _Prepared)
 		{
+			if (__Row.prefix() == '+')
+				__Added++;
+			else if (__Row.prefix() == '-')
+				__Removed++;
 			if (__Row.oldLineNumber() != null)
 				__MaxNum = Math.max(__MaxNum, __Row.oldLineNumber());
 			if (__Row.newLineNumber() != null)
@@ -656,6 +777,7 @@ public class TextViewerWidget extends BaseWidget
 		int __NumWidth = Math.max(1, String.valueOf(__MaxNum).length());
 		NumFormat = "%" + __NumWidth + "d";
 		EmptyNum = " ".repeat(__NumWidth);
+		UpdateStatsHeader(__Added, __Removed);
 
 		// Publish the widest-row width; the bottom scrollbar's range and
 		// visibility are derived from it vs the pane width.

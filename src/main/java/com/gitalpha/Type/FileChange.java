@@ -219,73 +219,86 @@ public class FileChange
 
 	private List<LineChange> ParseDiffPerFile(String diffChunk)
 	{
-		var out = new ArrayList<LineChange>();
-		if (diffChunk == null || diffChunk.isBlank())
-			return out;
+		return ParseDiff(diffChunk);
+	}
 
-		int hunkIdx = diffChunk.indexOf("@@");
-		if (hunkIdx > 0)
+	/**
+	 * Parses raw unified-diff text into {@link LineChange} records: hunks
+	 * ({@code @@}) reset the line counters, {@code +}/{@code -} lines advance
+	 * only their own counter, context and blank lines advance both. Header
+	 * lines (before the first {@code @@}) are skipped. Static so any diff
+	 * source (working tree, stash, log) can reuse the same parser.
+	 */
+	public static List<LineChange> ParseDiff(String _DiffText)
+	{
+		List<LineChange> __Out = new ArrayList<>();
+		if (_DiffText == null || _DiffText.isBlank())
+			return __Out;
+
+		String __DiffText = _DiffText;
+		int __HunkIdx = __DiffText.indexOf("@@");
+		if (__HunkIdx > 0)
 		{
-			int lineStart = diffChunk.lastIndexOf('\n', hunkIdx);
-			if (lineStart >= 0)
-				diffChunk = diffChunk.substring(lineStart + 1);
+			int __LineStart = __DiffText.lastIndexOf('\n', __HunkIdx);
+			if (__LineStart >= 0)
+				__DiffText = __DiffText.substring(__LineStart + 1);
 			else
-				diffChunk = diffChunk.substring(hunkIdx);
+				__DiffText = __DiffText.substring(__HunkIdx);
 		}
 
-		String[] lines = diffChunk.split("\\r?\\n", -1);
+		String[] __Lines = __DiffText.split("\\r?\\n", -1);
 		// A trailing newline leaves a phantom empty element; it is not a diff line.
-		int __LineCount = lines.length;
-		if (__LineCount > 0 && lines[__LineCount - 1].isEmpty())
+		int __LineCount = __Lines.length;
+		if (__LineCount > 0 && __Lines[__LineCount - 1].isEmpty())
 			__LineCount--;
-		Integer oldLine = null;
-		Integer newLine = null;
+		Integer __OldLine = null;
+		Integer __NewLine = null;
 
-		for (int i = 0; i < __LineCount; ++i)
+		for (int __I = 0; __I < __LineCount; ++__I)
 		{
-			String line = lines[i];
-			if (line.startsWith("@@"))
+			String __Line = __Lines[__I];
+			if (__Line.startsWith("@@"))
 			{
-				var m = java.util.regex.Pattern.compile("@@\\s+-(\\d+)(,\\d+)?\\s+\\+(\\d+)(,\\d+)?\\s+@@").matcher(line);
-				if (m.find())
+				var __M = java.util.regex.Pattern.compile("@@\\s+-(\\d+)(,\\d+)?\\s+\\+(\\d+)(,\\d+)?\\s+@@").matcher(__Line);
+				if (__M.find())
 				{
-					oldLine = Integer.parseInt(m.group(1));
-					newLine = Integer.parseInt(m.group(3));
+					__OldLine = Integer.parseInt(__M.group(1));
+					__NewLine = Integer.parseInt(__M.group(3));
 				}
 				continue;
 			}
 
-			if (line.length() == 0)
+			if (__Line.isEmpty())
 			{
-				out.add(new LineChange(oldLine, newLine, ' ', ""));
-				if (oldLine != null)
-					oldLine++;
-				if (newLine != null)
-					newLine++;
+				__Out.add(new LineChange(__OldLine, __NewLine, ' ', ""));
+				if (__OldLine != null)
+					__OldLine++;
+				if (__NewLine != null)
+					__NewLine++;
 				continue;
 			}
 
-			char p = line.charAt(0);
-			String text = line.length() > 1 ? line.substring(1) : "";
-			if (p == ' ')
+			char __P = __Line.charAt(0);
+			String __Text = __Line.length() > 1 ? __Line.substring(1) : "";
+			if (__P == ' ')
 			{
-				out.add(new LineChange(oldLine, newLine, p, text));
-				if (oldLine != null)
-					oldLine++;
-				if (newLine != null)
-					newLine++;
+				__Out.add(new LineChange(__OldLine, __NewLine, __P, __Text));
+				if (__OldLine != null)
+					__OldLine++;
+				if (__NewLine != null)
+					__NewLine++;
 			}
-			else if (p == '+')
+			else if (__P == '+')
 			{
-				out.add(new LineChange(null, newLine, p, text));
-				if (newLine != null)
-					newLine++;
+				__Out.add(new LineChange(null, __NewLine, __P, __Text));
+				if (__NewLine != null)
+					__NewLine++;
 			}
-			else if (p == '-')
+			else if (__P == '-')
 			{
-				out.add(new LineChange(oldLine, null, p, text));
-				if (oldLine != null)
-					oldLine++;
+				__Out.add(new LineChange(__OldLine, null, __P, __Text));
+				if (__OldLine != null)
+					__OldLine++;
 			}
 			else
 			{
@@ -293,7 +306,7 @@ public class FileChange
 			}
 		}
 
-		return out;
+		return __Out;
 	}
 
 	@Override

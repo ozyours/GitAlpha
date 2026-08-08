@@ -107,7 +107,7 @@ public class GitDirWidget extends StackPane
 	 */
 	private static final double CHANGES_ROW_MIN_HEIGHT = 240;
 	/** Preferred height (px) of the commit form row; fixed (no vgrow), so the form sticks to the bottom */
-	private static final double COMMIT_ROW_PREF_HEIGHT = 300;
+	private static final double COMMIT_ROW_PREF_HEIGHT = 240;
 
 	/** The tab that hosts this project widget */
 	public final GitDirTabButton TabButton;

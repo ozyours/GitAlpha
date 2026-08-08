@@ -40,13 +40,32 @@ AlphaEngine (singleton: AlphaEngine.Instance — never construct a second)
   └─ Event lists (WeakReference, pruned on dead refs):
        IOpenGitDirEvent / ICloseGitDirEvent / IRefreshGitDirEvent   (com.gitalpha.Engine.GitDirContainer)
 
-AlphaUI (BorderPane) → top: TopMenuBar + QuickCommandBar (placeholder entries only, see ROADMAP.md; shared "not implemented" notice: PlaceholderNotice); center: TabPane (trailing "+" tab creates new tabs)
+AlphaUI (BorderPane) → top: TopMenuBar + QuickCommandBar (placeholder entries except Git → Stash…, see ROADMAP.md; shared "not implemented" notice: PlaceholderNotice); center: TabPane (trailing "+" tab creates new tabs)
   ├─ GitDirTabButton (extends Tab, implements IObject) → ProjectBrowser (path field + recent repo list)
   └─ OpenProject(gitDir) → GitDirWidget (GridPane)     ← BaseWidget subclasses
        ├─ BranchWidget      local/remote branch TreeViews (active branch: dot + bold green + tooltip)
        ├─ ChangesWidget     ListView<ChangeEntryWidget> (staged/unstaged)
        ├─ CommitWidget      summary TextField + description TextArea + commit Button
        └─ TextViewerWidget  diff viewer (intra-line LCS highlight)
+
+StashWidget (separate Stage, launched from Git → Stash…; one per repo, deduped in TopMenuBar) → three-column SplitPane
+  ├─ Left:   ListView<StashEntry> (stash list parsed from git stash list)
+  ├─ Centre: ListView<StashEntry.StashFile> (file change list for selected stash)
+  ├─ Right:  TextViewerWidget diff viewer (raw unified diff via SetRawDiffText — per-file diffs use
+  │          `git diff <stash>^ <stash> -- <path>` because `git stash show -p` accepts no pathspec)
+  └─ Bottom: action buttons (Rename/Pop/Drop/Apply/Save/Close) + EStashMode selector + Auto Restore checkbox
+  └─ GitStashOperator (Engine): stash facade — mutations (push/pop/drop/apply) queue through the
+     GitOperator runner; rename runs as ONE queued IGitTask (commit-tree → stash store → drop
+     stash@{N+1}, rollback on drop failure — NOT drop+push, which would stash the working tree);
+     reads (list/files/diff) run synchronously via GitDir.RunCMD off the FX thread
+  └─ StashEntry (Type package): data class with Index, Branch, Description, StashFile list
+  └─ StashWindowState (Type package): ONE shared state for all repos (last window to change it wins),
+     persisted in the session file ("StashWindowState" key) with windowed bounds/maximized/column
+     sizes + Auto Restore preference; bounds are only stored while the window is windowed (a
+     maximized close must not clobber the windowed restore size); restore is screen-clamped
+  └─ Stale async loads are dropped via per-selection version counters (StashSelectionVersion /
+     FileSelectionVersion) compared inside Platform.runLater completions
+  └─ Main-window close calls Platform.exit() so open stash windows don't keep the app alive
 
 GitDir (per repo, ISerializable) — data holder only
   ├─ GetChangedFiles() / GetBranches() / GetActiveBranch()   // ActiveBranch is volatile (full path, not leaf)
@@ -58,12 +77,13 @@ GitDir (per repo, ISerializable) — data holder only
 
 - `GitDirWidget` owns all left-pane sizing as `RowConstraints`/`ColumnConstraints` — per-widget size constants were removed (sizing is **not** set inside `BranchWidget`/`ChangesWidget`/`CommitWidget`)
 - `LEFT_PANE_WIDTH = 500` (fixed); diff viewer fills the rest
-- Row policy: branch row pinned `min == max = 140` (never grows); changes row `min 240 + vgrow ALWAYS` (the **only** growable row); commit row fixed pref height `COMMIT_ROW_PREF_HEIGHT = 300` (no vgrow) so it sticks to the bottom
+- Row policy: branch row pinned `min == max = 140` (never grows); changes row `min 240 + vgrow ALWAYS` (the **only** growable row); commit row fixed pref height `COMMIT_ROW_PREF_HEIGHT = 240` (no vgrow) so it sticks to the bottom
 - Resizing the window only stretches the changes row; branch + commit heights are fixed
 
 ## Git operations & refresh (GitOperator)
 
 - **Every git mutation goes through the operator queue**: `GitDir.GetOperator().RunGitOp(cmd, policy, callback)`. Never run git from UI code directly.
+- Multi-step sequences that must not interleave with other operations (e.g. the stash rename's five commands) are queued as **one `IGitTask`** via `GitOperator.QueueGitTask(task, policy, callback)` — the task runs to completion on the runner thread before anything else in the queue.
 - One **runner virtual thread** per GitDir drains a `BlockingQueue` FIFO; when the queue is empty it runs an **interruptible refresh** of GitDir state.
 - `ERefreshPolicy` — the highest policy in a drained batch wins:
   - `NO_REFRESH` — run the command, do nothing else
@@ -110,7 +130,7 @@ These are not optional — match them when adding or editing methods.
 - **Overlay states** — loading, guard messages, large-file prompt, and error messages are shown in an `OverlayPane` (a `StackPane` layered above the `ListView` that is toggled managed/visible); "Loading..." is a centered `Text`
 - **File load guards** — before a diff is computed, `FileChange.CheckLoadGuard()` checks the on-disk file: content sniffing (NUL byte in the first 8000 bytes) marks non-text files `BINARY`, and files above `LARGE_FILE_THRESHOLD_BYTES` (1 MB) are marked `LARGE_FILE`. Guards apply to both the untracked full-add path and the `git diff` path (when the file still exists); a removed file has no content to guard. `GetDiffLines()` returns a `DiffLoadResult` (lines + `EFileLoadGuard`); `BINARY` files are never loaded, `LARGE_FILE` files are not auto-loaded — `TextViewerWidget` shows a centered prompt with a "Load file" button that calls `GetDiffLinesForce()` (explicit user action bypasses only the large-file guard). A cached diff (matching mtime) is returned regardless of guards, so a force-loaded large file renders instantly on reselect
 - `FileChange.GetDiffLines()` runs a sync `git diff` through `GitDir.RunCMD` on the ForkJoinPool and caches the parsed diff by file mtime; untracked files synthesize a full-add `@@ -0,0 +1,n @@` diff
-- File list behavior is **selection-driven**: the diff viewer follows the ListView highlight (`selectedItemProperty`) — selecting a file entry shows its diff, while a "Staged"/"Unstaged" header or an empty selection empties the viewer. Headers carry no `FileChange`, so selecting one only highlights it; there are no mouse-click handlers on the list (not even for empty space)
+- File list behavior is **selection-driven**: the diff viewer follows the ListView highlight (`selectedItemProperty`). The list runs in `SelectionMode.MULTIPLE` — the diff viewer shows the focused (last-clicked) item, while a "Staged"/"Unstaged" header or an empty selection empties the viewer. Headers carry no `FileChange`, so selecting one only highlights it; there are no mouse-click handlers on the list (not even for empty space)
 - `ChangesWidget.UpdateChanges()` updates the items list **in place** (diff-merge by path/scope/status, `removeIf` + move-capable ordered insertion) instead of clearing/repopulating: surviving entries keep their widget instance and are only ever relocated, never rebuilt, so the current selection — and therefore the diff viewer — survives a refresh untouched. Header widgets (`StagedHeader`/`UnstagedHeader`) are persistent instances so a highlighted header keeps its highlight too; each section is re-sorted by file path every refresh (paths normalized to `/` separators to approximate git's ordering)
 
 ## Key Gotchas
@@ -124,7 +144,7 @@ These are not optional — match them when adding or editing methods.
 - Branch parsing (`GitOperator.ParseBranchesOutput`): remote vs local is decided by the `remotes/` prefix (not slash count — local branches like `feature/foo` contain slashes too); `ActiveBranch` stores the **full path** (`feature/foo`, not the leaf `foo`) so shared leaf names don't collide in the active-branch cell factory; detached-HEAD lines (`(HEAD detached at ...)`) are skipped
 - `BranchWidget` active-branch styling is done in the `TreeCell` factory (dot + bold green + tooltip) — never bake markers into the tree strings; cells are reused, so the empty branch must reset `setText/setGraphic/setTooltip/setStyle`
 - `TextViewerWidget.DiffRowCell` is a recycled `ListCell` — `updateItem` must reset every property (`setText(null)`, `setGraphic(null)`, `setStyle("")`) and re-derive the row graphic from the `PreparedRow`; the inline `-fx-background-color` on the cell overrides the `:selected`/`:hover` styles so green/red rows keep their colour
-- `ChangesWidget.ToggleStagedState` disables the checkbox, then runs `add`/`reset` via `RunGitOp(..., REFRESH_AND_UPDATE_UI, callback)`; on failure it re-enables, reverts the selection, and shows an error alert. The post-operation broadcast is handled by the operator, not the caller
+- `ChangesWidget.ToggleStagedState` batches: when the toggled row is part of a `MULTIPLE` selection it gathers every selected non-header row, syncs all their checkboxes, and runs ONE `add`/`reset` via `RunGitOp(..., REFRESH_AND_UPDATE_UI, callback)`; paths are prefixed with `:(literal)` so glob characters in filenames match literally. On completion all synced checkboxes are re-enabled; on failure they are reverted and an error alert is shown. The post-operation broadcast is handled by the operator, not the caller
 - `CommitWidget` disables the whole form while `git commit` runs so Enter (TextField action) can't double-submit; on success the form is cleared (the refresh already updated the UI)
 - `Debug` logging is off by default; enable via system properties `-Dgitalpha.debug.general|branches|changes=true`
 

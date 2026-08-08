@@ -2,6 +2,7 @@ package com.gitalpha.Engine;
 
 import com.gitalpha.Engine.GitDirContainer.*;
 import com.gitalpha.Function.GitDirFunction;
+import com.gitalpha.Type.StashWindowState;
 import org.json.JSONObject;
 
 import java.io.IOException;
@@ -57,6 +58,27 @@ public class AlphaEngine
 	private final List<WeakReference<IRefreshGitDirEvent>> RefreshGitDirEventList = new ArrayList<>();
 	private final Path SessionFilePath = Path.of(System.getProperty("user.home"), ".gitalpha", "session.json");
 	private String LastSessionRootHash = "";
+
+	/**
+	 * Shared Stash-window state: one geometry/maximized/column set used by every
+	 * repository's Stash window. It stays null until a stash window has been
+	 * opened (and persisted) at least once; the last window to change it wins.
+	 */
+	private StashWindowState SharedStashWindowState = null;
+
+	private static final String STASH_WINDOW_STATE_KEY = "StashWindowState";
+
+	public StashWindowState GetStashWindowState()
+	{
+		return SharedStashWindowState;
+	}
+
+	public void SetStashWindowState(StashWindowState _State)
+	{
+		if (_State == null)
+			return;
+		SharedStashWindowState = _State;
+	}
 
 	/** Persisted window bounds; -1,-1 means "use platform default position" */
 	private int WindowX = -1;
@@ -145,6 +167,8 @@ public class AlphaEngine
 			__Root.put(WINDOW_WIDTH_KEY, WindowWidth);
 			__Root.put(WINDOW_HEIGHT_KEY, WindowHeight);
 			__Root.put(WINDOW_MAXIMIZED_KEY, WindowMaximized);
+			if (SharedStashWindowState != null)
+				__Root.put(STASH_WINDOW_STATE_KEY, SharedStashWindowState.OnSerialize());
 			String __RootString = __Root.toString(2);
 			String __NewHash = ComputeSessionHash(__RootString);
 
@@ -199,6 +223,15 @@ public class AlphaEngine
 				WindowHeight = __Root.getInt(WINDOW_HEIGHT_KEY);
 			if (__Root.has(WINDOW_MAXIMIZED_KEY))
 				WindowMaximized = __Root.getBoolean(WINDOW_MAXIMIZED_KEY);
+
+			// Restore the shared Stash-window state (a single geometry set for all
+			// repositories; the old per-repository map format is intentionally not
+			// migrated — stale per-repo geometries are dropped).
+			if (__Root.has(STASH_WINDOW_STATE_KEY))
+			{
+				SharedStashWindowState = new StashWindowState();
+				SharedStashWindowState.OnDeserialize(__Root.getJSONObject(STASH_WINDOW_STATE_KEY));
+			}
 		}
 		catch (Exception __Ex)
 		{

@@ -2,6 +2,7 @@ package com.gitalpha.UI;
 
 import com.gitalpha.Engine.AlphaEngine;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
@@ -78,6 +79,12 @@ public class MainJavaFx extends Application
 		});
 		stage.maximizedProperty().addListener((obs, oldVal, newVal) ->
 			__Engine.SetWindowMaximized(newVal));
+
+		// Closing the main window terminates the whole application. Without the
+		// explicit exit the runtime would keep running as long as any stash
+		// window (a separate stage) is still open; Platform.exit() closes every
+		// window and then calls stop(), which saves the session.
+		stage.setOnCloseRequest(__Event -> Platform.exit());
 
 		stage.focusedProperty().addListener((obs, oldValue, newValue) ->
 		{

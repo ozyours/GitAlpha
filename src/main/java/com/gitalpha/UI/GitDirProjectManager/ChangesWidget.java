@@ -59,7 +59,7 @@ class ChangeEntryWidget extends HBox implements IObject
 		CommitCheckBox.setSelected(FileChangeTarget.GetScope() == EFileChangeScope.STAGED);
 		CommitCheckBox.setOnAction(event ->
 		{
-			ChangesWidget.ToggleStagedState(FileChangeTarget, CommitCheckBox.isSelected(), CommitCheckBox);
+			ChangesWidget.ToggleStagedState(FileChangeTarget, CommitCheckBox.isSelected());
 		});
 
 		// Create text showing file status and path
@@ -105,6 +105,17 @@ class ChangeEntryWidget extends HBox implements IObject
 	public boolean IsSelected()
 	{
 		return !IsHeader && CommitCheckBox.isSelected();
+	}
+
+	/**
+	 * Package-private accessor: hands the owning ChangesWidget the checkbox so a
+	 * batched stage/unstage can sync and disable the whole selection at once.
+	 *
+	 * @return the commit checkbox backing this row
+	 */
+	CheckBox GetCommitCheckBox()
+	{
+		return CommitCheckBox;
 	}
 
 	/** @return the file change backing this row, or null for a header row */
@@ -173,13 +184,18 @@ public class ChangesWidget extends BaseWidget
 		// for long lists (JDK-8296871 / JDK-8301375 / JDK-8328167).
 		ChangesListView = new ListView<>();
 		ChangesListView.setFixedCellSize(ComputeFixedCellSize());
+		// Multi-selection: Ctrl/Shift-click selects several entries; the diff
+		// viewer follows the focused (last-clicked) item, and toggling the
+		// checkbox of one selected row stages/unstages the whole selection.
+		ChangesListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
 		// Add ListView to the StackPane
 		getChildren().add(ChangesListView);
 
-		// The diff viewer follows the ListView selection (highlight), not clicks.
-		// A file entry shows its diff; a header (or no selection) has no FileChange,
-		// so the diff viewer becomes empty.
+		// The diff viewer follows the ListView selection, not clicks. With MULTIPLE
+		// selection, selectedItemProperty reports the focused (last-clicked) item,
+		// which is the entry shown. A file entry shows its diff; a header (or no
+		// selection) has no FileChange, so the diff viewer becomes empty.
 		ChangesListView.getSelectionModel().selectedItemProperty().addListener((__Obs, __OldItem, __NewItem) ->
 		{
 			if (__NewItem != null && !__NewItem.IsHeader)
@@ -363,50 +379,106 @@ public class ChangesWidget extends BaseWidget
 	}
 
 	/**
-	 * Stage (git add) or unstage (git reset HEAD --) a file through the
+	 * Stage (git add) or unstage (git reset HEAD --) files through the
 	 * GitOperator queue with REFRESH_AND_UPDATE_UI, so the post-operation
-	 * refresh/UI broadcast is handled by the operator. The source checkbox is
-	 * disabled while the command runs; on failure it is re-enabled, its selection
-	 * reverted, and an error dialog shown.
+	 * refresh/UI broadcast is handled by the operator.
+	 * <p>
+	 * When the toggled row is part of a multi-selection, the whole selection is
+	 * staged/unstaged together in ONE git command and every affected checkbox is
+	 * synced to the toggled state; otherwise only the toggled row is affected
+	 * (single-row fallback). Each target path is passed with the {@code :(literal)}
+	 * pathspec prefix so filenames containing glob/magic characters are matched
+	 * literally, not as patterns. All affected checkboxes are disabled while the
+	 * command runs and re-enabled on completion — success and failure alike; on
+	 * failure their selection is reverted and an error dialog shown.
 	 *
 	 * @param _Change          the file change to move between scopes
 	 * @param _ShouldBeStaged  true to stage, false to unstage
-	 * @param _SourceCheckBox  the checkbox the user toggled (disabled during the op)
 	 */
-	void ToggleStagedState(FileChange _Change, boolean _ShouldBeStaged, CheckBox _SourceCheckBox)
+	void ToggleStagedState(FileChange _Change, boolean _ShouldBeStaged)
 	{
 		if (_Change == null || _Change.GetFilePath() == null)
 			return;
 
-		Path __RelativePath = GetGitDirTarget().GetRepoRootPath().relativize(_Change.GetFilePath());
+		// Gather the rows to act on: the whole multi-selection when the toggled
+		// row is part of it, otherwise just the toggled row.
+		List<ChangeEntryWidget> __Targets = new ArrayList<>();
+		boolean __SourceInSelection = false;
+		for (ChangeEntryWidget __Entry : ChangesListView.getSelectionModel().getSelectedItems())
+		{
+			if (__Entry == null || __Entry.IsHeader || __Entry.GetFileChange() == null)
+				continue;
+			if (__Entry.GetFileChange() == _Change)
+				__SourceInSelection = true;
+			__Targets.add(__Entry);
+		}
+		if (!__SourceInSelection || __Targets.isEmpty())
+		{
+			// Single-row toggle (checkbox clicked outside the selection).
+			__Targets.clear();
+			for (ChangeEntryWidget __Entry : ChangesListView.getItems())
+			{
+				if (!__Entry.IsHeader && __Entry.GetFileChange() == _Change)
+				{
+					__Targets.add(__Entry);
+					break;
+				}
+			}
+		}
+		if (__Targets.isEmpty())
+			return;
+
+		// Build one git command covering every target row. Each path is prefixed
+		// with the literal pathspec magic so filenames containing glob or magic
+		// characters (* ? [ ] : ...) are matched as-is rather than as patterns.
+		Path __RepoRoot = GetGitDirTarget().GetRepoRootPath();
 		List<String> __Cmd = new ArrayList<>();
 		if (_ShouldBeStaged)
 		{
 			__Cmd.add("add");
 			__Cmd.add("--");
-			__Cmd.add(__RelativePath.toString());
 		}
 		else
 		{
 			__Cmd.add("reset");
 			__Cmd.add("HEAD");
 			__Cmd.add("--");
-			__Cmd.add(__RelativePath.toString());
+		}
+		for (ChangeEntryWidget __Target : __Targets)
+			__Cmd.add(":(literal)" + __RepoRoot.relativize(__Target.GetFileChange().GetFilePath()).toString());
+
+		// Sync every target checkbox to the toggled state and disable them all so
+		// the batched op can't be double-submitted; the user sees the whole
+		// selection flip together.
+		List<CheckBox> __CheckBoxes = new ArrayList<>();
+		for (ChangeEntryWidget __Target : __Targets)
+		{
+			CheckBox __Box = __Target.GetCommitCheckBox();
+			__CheckBoxes.add(__Box);
+			__Box.setSelected(_ShouldBeStaged);
+			__Box.setDisable(true);
 		}
 
-		_SourceCheckBox.setDisable(true);
 		GetGitDirTarget().GetOperator().RunGitOp(__Cmd, ERefreshPolicy.REFRESH_AND_UPDATE_UI, (__Ok, __Err, __Dir) ->
 		{
 			Platform.runLater(() ->
 			{
+				// Re-enable every synced checkbox. On success this matters for
+				// rows whose scope did not change (e.g. a file already staged in
+				// a mixed batch) and thus survived the refresh; on failure it is
+				// the pre-revert step.
+				for (CheckBox __Box : __CheckBoxes)
+					__Box.setDisable(false);
+
 				if (!__Ok)
 				{
-					_SourceCheckBox.setDisable(false);
-					_SourceCheckBox.setSelected(!_ShouldBeStaged);
+					// Revert every synced checkbox.
+					for (CheckBox __Box : __CheckBoxes)
+						__Box.setSelected(!_ShouldBeStaged);
 
 					Alert __Alert = new Alert(Alert.AlertType.ERROR);
 					__Alert.setTitle("Git Operation Failed");
-					__Alert.setHeaderText(_ShouldBeStaged ? "Failed to stage file" : "Failed to unstage file");
+					__Alert.setHeaderText(_ShouldBeStaged ? "Failed to stage files" : "Failed to unstage files");
 					__Alert.setContentText(__Err);
 					__Alert.showAndWait();
 				}

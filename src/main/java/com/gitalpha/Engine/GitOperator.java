@@ -21,7 +21,10 @@ import java.util.concurrent.LinkedBlockingQueue;
  * Orchestrates git operations for a single GitDir.
  * <p>
  * <ul>
- *   <li>Queues incoming git operations and executes them sequentially on a single runner thread.</li>
+ *   <li>Queues incoming git operations and executes them sequentially on a single runner thread.
+ *       Each queued item is an {@link IGitTask} — either a single git command
+ *       ({@link #RunGitOp}) or a caller-supplied multi-step task
+ *       ({@link #QueueGitTask}) that must not interleave with other operations.</li>
  *   <li>When the queue is empty, runs an interruptible refresh to update the internal GitDir state.</li>
  *   <li>If a new operation arrives while a refresh is in progress, the refresh is cancelled cooperatively
  *       so the new operation can execute immediately, followed by a fresh refresh.</li>
@@ -70,7 +73,14 @@ public class GitOperator implements AutoCloseable
 	// Inner records
 	// ---------------------------------------------------------------------------
 
-	private record QueuedOperation(List<String> Command, ERefreshPolicy Policy, IGitOperationCallback Callback)
+	/**
+	 * One unit of queued work: the {@link IGitTask} to execute on the runner
+	 * thread (a single git command wrapped by {@link SingleCommand}, a
+	 * caller-supplied multi-step task from {@link #QueueGitTask}, or null for a
+	 * pure refresh request), the refresh policy to accumulate on success, and
+	 * the callback to fire after the batch completes.
+	 */
+	private record QueuedOperation(IGitTask Task, ERefreshPolicy Policy, IGitOperationCallback Callback)
 	{
 	}
 
@@ -106,7 +116,7 @@ public class GitOperator implements AutoCloseable
 	// ---------------------------------------------------------------------------
 
 	/**
-	 * Enqueue a git operation to be executed on the runner thread.
+	 * Enqueue a single git command to be executed on the runner thread.
 	 * <p>
 	 * If a refresh is currently in progress, it will be cancelled so this operation
 	 * can execute immediately. After the operation (and any others queued before it)
@@ -119,10 +129,24 @@ public class GitOperator implements AutoCloseable
 	 */
 	public void RunGitOp(List<String> _Cmd, ERefreshPolicy _Policy, IGitOperationCallback _Callback)
 	{
-		var __Op = new QueuedOperation(new ArrayList<>(_Cmd), _Policy, _Callback);
-		OperationQueue.add(__Op);
+		OperationQueue.add(new QueuedOperation(new SingleCommand(new ArrayList<>(_Cmd)), _Policy, _Callback));
+		SignalRefreshCancel();
+	}
 
-		// Cancel any in-flight refresh so the runner picks up this operation sooner.
+	/**
+	 * Enqueue a caller-supplied multi-step task to be executed on the runner
+	 * thread. The task runs to completion before any other queued operation or
+	 * the refresh, so its git work is atomic with respect to the rest of the
+	 * queue — use this for sequences that must not interleave (e.g. the stash
+	 * rename's five commands).
+	 *
+	 * @param _Task     the work to run on the runner thread
+	 * @param _Policy   what to do after execution
+	 * @param _Callback callback to fire after the batch completes (may be null)
+	 */
+	public void QueueGitTask(IGitTask _Task, ERefreshPolicy _Policy, IGitOperationCallback _Callback)
+	{
+		OperationQueue.add(new QueuedOperation(_Task, _Policy, _Callback));
 		SignalRefreshCancel();
 	}
 
@@ -138,8 +162,8 @@ public class GitOperator implements AutoCloseable
 	 */
 	public void Refresh(ERefreshPolicy _Policy, IGitOperationCallback _Callback)
 	{
-		// Empty command list signals "refresh only, no git command".
-		var __Op = new QueuedOperation(new ArrayList<>(), _Policy, _Callback);
+		// Null task signals "refresh only, no git work to execute".
+		var __Op = new QueuedOperation(null, _Policy, _Callback);
 		OperationQueue.add(__Op);
 		SignalRefreshCancel();
 	}
@@ -172,7 +196,7 @@ public class GitOperator implements AutoCloseable
 	 * <p>
 	 * Behaviour:
 	 * <ol>
-	 *   <li>Drain the queue — execute each git command in FIFO order.
+	 *   <li>Drain the queue — execute each queued operation's task in FIFO order.
 	 *       Accumulate the highest {@link ERefreshPolicy} seen.</li>
 	 *   <li>After draining, if all operations succeeded and a refresh was requested,
 	 *       run {@link #RunRefresh()}.</li>
@@ -322,38 +346,28 @@ public class GitOperator implements AutoCloseable
 	// ---------------------------------------------------------------------------
 
 	/**
-	 * Execute a single git command synchronously on the runner thread.
+	 * Executes a single queued operation's {@link IGitTask} on the runner thread.
+	 * A null task is a pure refresh request and always succeeds. Any task
+	 * exception other than {@link InterruptedException} is captured as a failed
+	 * result instead of propagating, so one failing operation does not abort the
+	 * batch drain — the remaining queued operations still run.
 	 *
 	 * @param _Op the queued operation to execute
 	 * @return the result (callback, succeeded flag, error message)
-	 * @throws InterruptedException if the runner thread is interrupted
+	 * @throws InterruptedException if the runner thread is interrupted (shutdown)
 	 */
 	private OperationResult RunOperation(QueuedOperation _Op) throws InterruptedException
 	{
+		// Null task = pure refresh request, no git work to execute.
+		if (_Op.Task() == null)
+		{
+			return new OperationResult(_Op.Callback(), true, null);
+		}
+
 		try
 		{
-			// Empty command list = pure refresh request, no git command to execute.
-			if (_Op.Command().isEmpty())
-			{
-				return new OperationResult(_Op.Callback(), true, null);
-			}
-
-			var __Res = RunCMD(_Op.Command(), false);
-			boolean __Ok = __Res.getKey() == 0;
-
-			if (__Ok && IsCheckoutCommand(_Op.Command()))
-			{
-				String __BranchName = ExtractBranchName(_Op.Command());
-				if (__BranchName != null)
-				{
-					// Update the active branch immediately so the UI reflects the
-					// checkout even before the follow-up refresh re-parses it.
-					GitDirTarget.SetActiveBranch(__BranchName);
-				}
-			}
-
-			String __Error = __Ok ? null : "git " + String.join(" ", _Op.Command()) + " failed:\n" + __Res.getValue();
-			return new OperationResult(_Op.Callback(), __Ok, __Error);
+			_Op.Task().Execute();
+			return new OperationResult(_Op.Callback(), true, null);
 		}
 		catch (InterruptedException __Ex)
 		{
@@ -362,6 +376,43 @@ public class GitOperator implements AutoCloseable
 		catch (Exception __Ex)
 		{
 			return new OperationResult(_Op.Callback(), false, __Ex.getMessage());
+		}
+	}
+
+	/**
+	 * Wraps a single git command as a queued task: runs it on the runner thread,
+	 * propagates failures as exceptions, and updates the active branch right
+	 * after a successful checkout so the UI reflects it before the follow-up
+	 * refresh re-parses it.
+	 */
+	private class SingleCommand implements IGitTask
+	{
+		private final List<String> Command;
+
+		SingleCommand(List<String> _Command)
+		{
+			Command = _Command;
+		}
+
+		@Override
+		public void Execute() throws Exception
+		{
+			var __Res = RunCMD(Command, false);
+			if (__Res.getKey() != 0)
+			{
+				throw new RuntimeException("git " + String.join(" ", Command) + " failed:\n" + __Res.getValue());
+			}
+
+			if (IsCheckoutCommand(Command))
+			{
+				String __BranchName = ExtractBranchName(Command);
+				if (__BranchName != null)
+				{
+					// Update the active branch immediately so the UI reflects the
+					// checkout even before the follow-up refresh re-parses it.
+					GitDirTarget.SetActiveBranch(__BranchName);
+				}
+			}
 		}
 	}
 
