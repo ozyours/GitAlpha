@@ -73,24 +73,29 @@ Items that were discussed and have been committed to `master`.
       (screen-clamped min height); Java compiler source/target bumped to 26 (`56f0d4b`)
 - [x] **Misspelled class rename** — `UI/GitDirEntryUI/GirDirEntryUI.java` renamed to `GitDirEntryUI`
       (class, constructor, filename) with the `GitDirContainerUI` reference updated (`56f0d4b`)
-### Implemented, awaiting commit
-
-- [ ] **Stash feature** — `StashWidget` (separate `Stage`) with three-column layout: stash list,
-      file-change list, diff viewer; bottom action buttons (Pop/Drop/Apply/Rename/Save/Help/Close);
-      `StashEntry` data class parsed from `git stash list`; `TopMenuBar` Git → Stash… wired to open
-      the stash window for the active project; git stash operations (push/pop/drop/apply/rename)
-      run through `GitOperator.RunGitOp` with `REFRESH_AND_UPDATE_UI`; stash file list and diff
-      fetched on demand via `git stash show` (uncommitted)
-- [ ] **Stash window polish** — window position/size/maximized and column divider positions persist
-      per repo in the session file (`StashWindowState`, saved under `"StashWindowStates"`; bounds
-      only stored while windowed so a maximized close can't clobber the windowed restore size;
-      restore is screen-clamped); the diff viewer is the shared virtualized `TextViewerWidget`
-      (`SetRawDiffText` renders a raw unified diff) instead of a plain `TextArea`; all stash git
-      commands moved into `GitCMDConstant`; per-file diffs use `git diff <stash>^ <stash> -- <path>`
-      because `git stash show -p` accepts no pathspec; **commit-preserving rename** recreates the
-      stash commit via `commit-tree` + `stash store` + `stash drop stash@{N+1}` (with rollback on
-      drop failure) instead of the destructive drop+push; stale async loads are dropped via
-      per-selection version counters (uncommitted)
+- [x] **Stash feature** — `StashWidget` (separate `Stage`, one per repo deduped in `TopMenuBar`) with
+      three-column layout: stash list, file-change list, virtualized diff viewer; bottom actions
+      (Rename/Pop/Drop/Apply/Save/Close) + `EStashMode` selector + Auto Restore checkbox + drop
+      confirmation; `GitStashOperator` facade queues mutations through the `GitOperator` runner and
+      runs reads (list/files/diff) synchronously off the FX thread; `StashEntry` data class parsed
+      from `git stash list` (`8e85400`)
+- [x] **Stash window polish** — ONE shared `StashWindowState` for all repos (last window to change
+      it wins) persisted in the session file under `"StashWindowState"`: windowed bounds/maximized/
+      column sizes + Auto Restore preference (bounds only stored while windowed so a maximized close
+      can't clobber the windowed restore size; restore is screen-clamped); the diff viewer is the
+      shared virtualized `TextViewerWidget` (`SetRawDiffText` renders a raw unified diff via the
+      shared `FileChange.ParseDiff`); per-file diffs use `git diff <stash>^ <stash> -- <path>`
+      because `git stash show -p` accepts no pathspec; **commit-preserving rename** runs as ONE
+      queued `IGitTask` (`commit-tree` → `stash store` → `stash drop stash@{N+1}`, rollback on drop
+      failure) instead of the destructive drop+push; stale async loads dropped via per-selection
+      version counters; main-window close calls `Platform.exit()` so stash windows don't keep the
+      app alive (`8e85400`)
+- [x] **Multi-select & bulk checkbox toggle** — `ChangesListView` enables `SelectionMode.MULTIPLE`;
+      the diff viewer follows the focused (last-clicked) item via `selectedItemProperty`; with
+      several rows selected, toggling any one checkbox checks/unchecks all selected rows and
+      stages/unstages them in one operator-queue batch (`RunGitOp(..., REFRESH_AND_UPDATE_UI, ...)`)
+      with `:(literal)` pathspec magic so glob characters in filenames match literally; all synced
+      checkboxes are disabled in flight and re-enabled/reverted on completion (`8e85400`)
 
 ---
 
@@ -161,9 +166,10 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 ### App shell / UI
 
 - [ ] **Menu/quick-bar functionality** — `TopMenuBar` and `QuickCommandBar` exist with placeholder
-      entries only (committed as placeholders in `56f0d4b`): every entry shows a "not implemented"
-      notice. Done = real File (open/quit), Git (fetch/pull/push/branch/stash/tags), Settings and Help
-      (about) entries wired through the `GitOperator.RunGitOp(cmd, policy, callback)` queue
+      entries only (committed as placeholders in `56f0d4b`; Git → Stash… is real since `8e85400`):
+      every other entry shows a "not implemented" notice. Done = real File (open/quit), Git
+      (fetch/pull/push/branch/tags), Settings and Help (about) entries wired through the
+      `GitOperator.RunGitOp(cmd, policy, callback)` queue
 - [ ] **Command abstraction + quick command bar** — decided design: `abstract class BaseCommand`
       (metadata `GetId()` / `GetDisplayName()` / `GetDescription()` + `abstract void
       Execute(CommandContext)`), one subclass per command overriding `Execute` — git commands run
@@ -217,11 +223,6 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 
 ### Changes list & staging
 
-- [x] **Multi-select & bulk checkbox toggle** — `ChangesListView` enables `SelectionMode.MULTIPLE`;
-      the diff viewer follows the focused (last-clicked) item via `selectedItemProperty`; with several
-      rows selected, toggling any one checkbox checks/unchecks all selected rows and stages/unstages
-      them in one operator-queue batch (`RunGitOp(..., REFRESH_AND_UPDATE_UI, ...)`); target paths use
-      `:(literal)` pathspec magic so filenames with glob characters match literally
 - [ ] **Section select-all checkboxes** — the "Staged"/"Unstaged" header rows are built by the header
       `ChangeEntryWidget(String)` constructor, which creates only an **invisible** checkbox
       (`CommitCheckBox.setVisible(false)`/`setManaged(false)`, `ChangesWidget.java:99-101`); no
