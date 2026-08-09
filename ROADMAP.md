@@ -96,6 +96,14 @@ Items that were discussed and have been committed to `master`.
       stages/unstages them in one operator-queue batch (`RunGitOp(..., REFRESH_AND_UPDATE_UI, ...)`)
       with `:(literal)` pathspec magic so glob characters in filenames match literally; all synced
       checkboxes are disabled in flight and re-enabled/reverted on completion (`8e85400`)
+- [x] **History tab scaffold & shared file-change list** — `GitDirWidget` content becomes an outer
+      two-column grid: a fixed 500px left sub-`TabPane` with non-closable "Changes" / "History"
+      tabs; the single right-column `TextViewerWidget` now serves both tabs. `TreeViewWidget` is
+      the History-tab scaffold (commit-graph DAG placeholder over a read-only file list, empty
+      until `git log` parsing lands). `ImmutableChangesWidget` extracted from the stash window as a
+      generic read-only list over the new `IFileListEntry` contract (`StashEntry.StashFile`
+      implements it); the stash Save mode (`EStashMode`) is now persisted in `StashWindowState`
+      (`5bb7c87`)
 
 ---
 
@@ -159,7 +167,11 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
       diff: code/markdown cells, outputs, execution counts) or the existing `TextViewerWidget` for
       text files. Done = the selection-driven `SetFileChange` flow, load guards, and the
       refresh-stable diff survive the dispatch
-- [ ] **Commit history / log view** — no `git log` visualization exists
+- [ ] **Commit history / log view** — the "History" sub-tab scaffold exists (`TreeViewWidget`:
+      commit-graph DAG placeholder + `ImmutableChangesWidget` file list, committed in `5bb7c87`)
+      but there is still no `git log` parsing or DAG rendering; the scaffold's file list stays
+      empty until a commit selection is wired to populate it, and the shared right-column diff
+      viewer will show the selected commit's file diffs
 - [ ] **Settings for refresh behavior** — auto-refresh frequency / toggle (currently refresh is
       event-driven only)
 
