@@ -70,7 +70,15 @@ public class StashEntry
 
 	/**
 	 * A single file entry inside a stash, parsed from
-	 * {@code git stash show --name-status}.
+	 * {@code git stash show --name-status}. Implements {@link IFileListEntry}
+	 * so the shared {@code ImmutableChangesWidget} can render it.
 	 */
-	public static record StashFile(String Path, EFileChangeStatus Status) {}
+	public static record StashFile(String Path, EFileChangeStatus Status) implements IFileListEntry
+	{
+		@Override
+		public String GetPath() { return Path; }
+
+		@Override
+		public EFileChangeStatus GetStatus() { return Status; }
+	}
 }

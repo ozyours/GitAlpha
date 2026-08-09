@@ -42,15 +42,19 @@ AlphaEngine (singleton: AlphaEngine.Instance — never construct a second)
 
 AlphaUI (BorderPane) → top: TopMenuBar + QuickCommandBar (placeholder entries except Git → Stash…, see ROADMAP.md; shared "not implemented" notice: PlaceholderNotice); center: TabPane (trailing "+" tab creates new tabs)
   ├─ GitDirTabButton (extends Tab, implements IObject) → ProjectBrowser (path field + recent repo list)
-  └─ OpenProject(gitDir) → GitDirWidget (GridPane)     ← BaseWidget subclasses
-       ├─ BranchWidget      local/remote branch TreeViews (active branch: dot + bold green + tooltip)
-       ├─ ChangesWidget     ListView<ChangeEntryWidget> (staged/unstaged)
-       ├─ CommitWidget      summary TextField + description TextArea + commit Button
-       └─ TextViewerWidget  diff viewer (intra-line LCS highlight)
+  └─ OpenProject(gitDir) → GitDirWidget (StackPane) — content is an outer two-column grid:
+     │   left (fixed 500px) = sub-TabPane: "Changes" tab = working-tree GridPane,
+     │       "History" tab = TreeViewWidget placeholder (commit-graph DAG);
+     │   right = ONE shared TextViewerWidget diff viewer for both tabs
+     │   the commit row is pinned (min == pref) so the changes row stays the only grower
+     ├─ BranchWidget      local/remote branch TreeViews (active branch: dot + bold green + tooltip)
+     ├─ ChangesWidget     ListView<ChangeEntryWidget> (staged/unstaged)
+     ├─ CommitWidget      summary TextField + description TextArea + commit Button
+     └─ TextViewerWidget  diff viewer (intra-line LCS highlight)
 
 StashWidget (separate Stage, launched from Git → Stash…; one per repo, deduped in TopMenuBar) → three-column SplitPane
   ├─ Left:   ListView<StashEntry> (stash list parsed from git stash list)
-  ├─ Centre: ListView<StashEntry.StashFile> (file change list for selected stash)
+  ├─ Centre: ImmutableChangesWidget<StashFile> (shared read-only file list for selected stash)
   ├─ Right:  TextViewerWidget diff viewer (raw unified diff via SetRawDiffText — per-file diffs use
   │          `git diff <stash>^ <stash> -- <path>` because `git stash show -p` accepts no pathspec)
   └─ Bottom: action buttons (Rename/Pop/Drop/Apply/Save/Close) + EStashMode selector + Auto Restore checkbox
@@ -61,7 +65,7 @@ StashWidget (separate Stage, launched from Git → Stash…; one per repo, dedup
   └─ StashEntry (Type package): data class with Index, Branch, Description, StashFile list
   └─ StashWindowState (Type package): ONE shared state for all repos (last window to change it wins),
      persisted in the session file ("StashWindowState" key) with windowed bounds/maximized/column
-     sizes + Auto Restore preference; bounds are only stored while the window is windowed (a
+     sizes + Auto Restore preference + Save mode (EStashMode); bounds are only stored while the window is windowed (a
      maximized close must not clobber the windowed restore size); restore is screen-clamped
   └─ Stale async loads are dropped via per-selection version counters (StashSelectionVersion /
      FileSelectionVersion) compared inside Platform.runLater completions
@@ -76,8 +80,8 @@ GitDir (per repo, ISerializable) — data holder only
 ### Left-pane layout (GitDirWidget is the layout authority)
 
 - `GitDirWidget` owns all left-pane sizing as `RowConstraints`/`ColumnConstraints` — per-widget size constants were removed (sizing is **not** set inside `BranchWidget`/`ChangesWidget`/`CommitWidget`)
-- `LEFT_PANE_WIDTH = 500` (fixed); diff viewer fills the rest
-- Row policy: branch row pinned `min == max = 140` (never grows); changes row `min 240 + vgrow ALWAYS` (the **only** growable row); commit row fixed pref height `COMMIT_ROW_PREF_HEIGHT = 240` (no vgrow) so it sticks to the bottom
+- `LEFT_PANE_WIDTH = 500` (fixed); the shared `TextViewerWidget` diff viewer fills the rest and serves both sub-tabs
+- Row policy: branch row pinned `min == max = 140` (never grows); changes row `min 240 + vgrow ALWAYS` (the **only** growable row); commit row pinned `min == pref == COMMIT_ROW_PREF_HEIGHT = 240` (no vgrow) so it sticks to the bottom and never compresses when the sub-tab header takes vertical space
 - Resizing the window only stretches the changes row; branch + commit heights are fixed
 
 ## Git operations & refresh (GitOperator)

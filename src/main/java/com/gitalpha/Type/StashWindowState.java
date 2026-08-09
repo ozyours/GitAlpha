@@ -5,7 +5,8 @@ import org.json.JSONObject;
 /**
  * Persisted window state for a Stash window, stored once in the session file
  * and shared by every repository: window position/size, maximized flag, the
- * three-column SplitPane divider positions, and the Auto Restore preference.
+ * three-column SplitPane divider positions, the Auto Restore preference, and
+ * the Save-operation mode.
  * Bounds are only mutated while
  * the window is windowed, so the fields always hold the last *windowed*
  * geometry — a maximized window's on-screen bounds are never persisted
@@ -22,6 +23,7 @@ public class StashWindowState implements ISerializable
 	private static final String COLUMN1_KEY = "Column1";
 	private static final String COLUMN2_KEY = "Column2";
 	private static final String AUTO_RESTORE_KEY = "AutoRestore";
+	private static final String STASH_MODE_KEY = "StashMode";
 
 	/** Last windowed X; -1 means "use platform default position" */
 	private int X = -1;
@@ -39,6 +41,8 @@ public class StashWindowState implements ISerializable
 	private double Column2 = 0.60;
 	/** Whether the Save operation auto-restores the stashed changes afterwards; default off */
 	private boolean AutoRestore = false;
+	/** Save-operation mode last chosen in the mode dropdown; default is the first mode */
+	private EStashMode StashMode = EStashMode.Default;
 
 	public int GetX() { return X; }
 	public int GetY() { return Y; }
@@ -66,6 +70,9 @@ public class StashWindowState implements ISerializable
 	public boolean GetAutoRestore() { return AutoRestore; }
 	public void SetAutoRestore(boolean _AutoRestore) { AutoRestore = _AutoRestore; }
 
+	public EStashMode GetStashMode() { return StashMode; }
+	public void SetStashMode(EStashMode _StashMode) { StashMode = _StashMode; }
+
 	@Override
 	public JSONObject OnSerialize()
 	{
@@ -83,6 +90,8 @@ public class StashWindowState implements ISerializable
 		__JSON.put(COLUMN1_KEY, Column1);
 		__JSON.put(COLUMN2_KEY, Column2);
 		__JSON.put(AUTO_RESTORE_KEY, AutoRestore);
+		// The mode is a plain preference (no geometry rules); store it by enum name.
+		__JSON.put(STASH_MODE_KEY, StashMode.name());
 		return __JSON;
 	}
 
@@ -99,5 +108,21 @@ public class StashWindowState implements ISerializable
 		// Session files written before the preference existed lack the key; the
 		// field default (false) then stands.
 		if (JSON.has(AUTO_RESTORE_KEY)) AutoRestore = JSON.getBoolean(AUTO_RESTORE_KEY);
+		// Older session files lack the mode key, so the default mode stands. A
+		// stored name that no longer matches an enum constant (renamed/removed
+		// mode) also falls back to the default instead of failing the load.
+		if (JSON.has(STASH_MODE_KEY))
+		{
+			try
+			{
+				StashMode = EStashMode.valueOf(JSON.getString(STASH_MODE_KEY));
+			}
+			catch (RuntimeException __UnknownMode)
+			{
+				// Any malformed payload (unknown name, wrong JSON type) falls back
+				// to the default so a corrupted session file cannot abort the load.
+				StashMode = EStashMode.Default;
+			}
+		}
 	}
 }

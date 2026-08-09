@@ -2,10 +2,10 @@ package com.gitalpha.UI.Stash;
 
 import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
-import com.gitalpha.Type.EFileChangeStatus;
 import com.gitalpha.Type.EStashMode;
 import com.gitalpha.Type.StashEntry;
 import com.gitalpha.Type.StashWindowState;
+import com.gitalpha.UI.GitDirProjectManager.ImmutableChangesWidget;
 import com.gitalpha.UI.GitDirProjectManager.TextViewerWidget;
 import com.gitalpha.UI.IObject;
 import javafx.application.Platform;
@@ -26,14 +26,15 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Stash management window: a three-column layout with a stash list on the
- * left, a file-change list for the selected stash in the centre, and a
- * virtualized diff viewer (reusing {@link TextViewerWidget}) on the right.
+ * left, a read-only file-change list for the selected stash in the centre
+ * (reusing {@link ImmutableChangesWidget}), and a virtualized diff viewer
+ * (reusing {@link TextViewerWidget}) on the right.
  * Bottom buttons provide stash operations (rename, pop, drop, apply, save).
  * <p>
  * Opened from the Git → Stash… menu entry; one instance per repository.
- * Window bounds, maximized state and column divider positions are persisted
- * in the session file as a single state shared by all repositories
- * ({@link StashWindowState}). Column
+ * Window bounds, maximized state, column divider positions and the Save mode
+ * are persisted in the session file as a single state shared by all
+ * repositories ({@link StashWindowState}). Column
  * positions are re-applied in the {@code onShown} handler once the window is
  * laid out at its final size — applying them earlier lets SplitPaneSkin's
  * size-settling redistribute the dividers (JDK-8092863).
@@ -49,19 +50,20 @@ public class StashWidget extends Stage implements IObject
 	 */
 	private final ObservableList<StashEntry> StashEntries = FXCollections.observableArrayList();
 	/**
-	 * Current file list for the selected stash
-	 */
-	private final ObservableList<StashEntry.StashFile> StashFiles = FXCollections.observableArrayList();
-	/**
 	 * Currently selected stash entry (null if none)
 	 */
 	private StashEntry SelectedStash = null;
 
 	/**
-	 * Stash list (the selection source) and the file list that follows the selection
+	 * Stash list (the selection source); the centre file list is the shared
+	 * {@link ImmutableChangesWidget} below
 	 */
 	private final ListView<StashEntry> lst_StashList;
-	private final ListView<StashEntry.StashFile> lst_FileList;
+	/**
+	 * Read-only file-change list following the stash selection; selection is
+	 * routed to the diff viewer through the widget's selection handler
+	 */
+	private final ImmutableChangesWidget<StashEntry.StashFile> ImmutableChangesWidgetInstance;
 	/**
 	 * Virtualized diff viewer reused from the project view
 	 */
@@ -141,16 +143,12 @@ public class StashWidget extends Stage implements IObject
 		VBox leftPane = new VBox(lst_StashList);
 		VBox.setVgrow(lst_StashList, Priority.ALWAYS);
 
-		// --- Centre pane: file change list ---
-		lst_FileList = new ListView<>(StashFiles);
-		lst_FileList.setCellFactory(__List -> new StashFileCell());
-		lst_FileList.getSelectionModel().selectedItemProperty().addListener((__Obs, __Old, __New) ->
-		{
-			OnFileSelectionChanged();
-		});
+		// --- Centre pane: immutable file change list ---
+		ImmutableChangesWidgetInstance = new ImmutableChangesWidget<StashEntry.StashFile>();
+		ImmutableChangesWidgetInstance.SetSelectionHandler(__Selected -> OnFileSelectionChanged(__Selected));
 
-		VBox centrePane = new VBox(lst_FileList);
-		VBox.setVgrow(lst_FileList, Priority.ALWAYS);
+		VBox centrePane = new VBox(ImmutableChangesWidgetInstance);
+		VBox.setVgrow(ImmutableChangesWidgetInstance, Priority.ALWAYS);
 
 		// --- Right pane: virtualized diff viewer ---
 		DiffViewer = new TextViewerWidget(GitDirTarget);
@@ -224,7 +222,7 @@ public class StashWidget extends Stage implements IObject
 		// window has been laid out at its final size.
 		StashWindowState __Saved = AlphaEngine.Instance.GetStashWindowState();
 		WindowState = __Saved != null ? __Saved : new StashWindowState();
-// Clamp the restored geometry to the primary screen so a saved position
+		// Clamp the restored geometry to the primary screen so a saved position
 		// from a now-disconnected monitor or a stale size can't open off-screen.
 		javafx.geometry.Rectangle2D __Screen = javafx.stage.Screen.getPrimary().getVisualBounds();
 		if (WindowState.GetX() >= 0)
@@ -243,6 +241,19 @@ public class StashWidget extends Stage implements IObject
 		{
 			WindowState.SetAutoRestore(__New);
 			AlphaEngine.Instance.SetStashWindowState(WindowState);
+		});
+		// Restore the persisted Save mode, then wire the combo to write user
+		// changes back into the retained window state. The listener is attached
+		// after the restore so a stale selection is not saved back during
+		// construction.
+		cmb_StashMode.getSelectionModel().select(WindowState.GetStashMode());
+		cmb_StashMode.getSelectionModel().selectedItemProperty().addListener((__Obs, __Old, __New) ->
+		{
+			if (__New != null)
+			{
+				WindowState.SetStashMode(__New);
+				AlphaEngine.Instance.SetStashWindowState(WindowState);
+			}
 		});
 		if (WindowState.GetColumn1() > 0 && WindowState.GetColumn2() > WindowState.GetColumn1())
 			SplitPaneInstance.setDividerPositions(WindowState.GetColumn1(), WindowState.GetColumn2());
@@ -318,6 +329,12 @@ public class StashWidget extends Stage implements IObject
 			WindowState.SetWindowBounds((int) getX(), (int) getY(), (int) getWidth(), (int) getHeight());
 		WindowState.SetMaximized(isMaximized());
 		WindowState.SetColumns(SplitPaneInstance.getDividers().get(0).getPosition(), SplitPaneInstance.getDividers().get(1).getPosition());
+		// The Save mode is a plain preference: persist whatever is currently
+		// selected so it is flushed on close even if the combo listener was not
+		// the last writer.
+		EStashMode __Mode = cmb_StashMode.getSelectionModel().getSelectedItem();
+		if (__Mode != null)
+			WindowState.SetStashMode(__Mode);
 		AlphaEngine.Instance.SetStashWindowState(WindowState);
 	}
 
@@ -353,7 +370,9 @@ public class StashWidget extends Stage implements IObject
 
 	/**
 	 * When the user selects a stash entry, fetches the file list for that stash
-	 * and clears the diff viewer.
+	 * and replaces the centre list. The diff viewer is cleared as well: the
+	 * shown diff belongs to a file of the previously selected stash and is no
+	 * longer valid once the file list is replaced.
 	 */
 	private void OnStashSelectionChanged()
 	{
@@ -361,7 +380,7 @@ public class StashWidget extends Stage implements IObject
 		// dropped when it completes (rapid selection changes must not paint an
 		// older stash's file list under the current selection).
 		int __Version = ++StashSelectionVersion;
-		StashFiles.clear();
+		ImmutableChangesWidgetInstance.Clear();
 		DiffViewer.SetRawDiffText(null);
 		UpdateButtonStates();
 
@@ -378,7 +397,7 @@ public class StashWidget extends Stage implements IObject
 				{
 					if (__Version != StashSelectionVersion)
 						return;   // stale — the selection moved on
-					StashFiles.setAll(__Files);
+					ImmutableChangesWidgetInstance.SetEntries(__Files);
 				});
 			}
 			catch (Exception __Ex)
@@ -399,9 +418,10 @@ public class StashWidget extends Stage implements IObject
 	 * When the user selects a file in the stash file list, shows the diff of
 	 * that file in the diff viewer. An empty selection (or no stash selected)
 	 * clears the viewer. The git command runs off the FX thread; the result is
-	 * applied back on the FX thread via {@code Platform.runLater}.
+	 * applied back on the FX thread via {@code Platform.runLater}. Invoked from
+	 * the {@link ImmutableChangesWidget} selection handler with the new entry.
 	 */
-	private void OnFileSelectionChanged()
+	private void OnFileSelectionChanged(StashEntry.StashFile _Selected)
 	{
 		// Bump the version so an in-flight diff load for a previous selection is
 		// dropped (rapid selection changes must not paint an older file's diff).
@@ -410,9 +430,8 @@ public class StashWidget extends Stage implements IObject
 		// guard must also reject a diff that raced across a stash switch.
 		int __Version = ++FileSelectionVersion;
 		int __StashVersion = StashSelectionVersion;
-		StashEntry.StashFile __Selected = lst_FileList.getSelectionModel().getSelectedItem();
 		StashEntry __CurrentStash = SelectedStash;
-		if (__Selected == null || __CurrentStash == null)
+		if (_Selected == null || __CurrentStash == null)
 		{
 			DiffViewer.SetRawDiffText(null);
 			return;
@@ -422,7 +441,7 @@ public class StashWidget extends Stage implements IObject
 		{
 			try
 			{
-				String __Diff = GitDirTarget.GetStashOperator().GetFileDiff(__CurrentStash, __Selected.Path());
+				String __Diff = GitDirTarget.GetStashOperator().GetFileDiff(__CurrentStash, _Selected.Path());
 				Platform.runLater(() ->
 				{
 					if (__Version != FileSelectionVersion || __StashVersion != StashSelectionVersion)
@@ -703,45 +722,6 @@ public class StashWidget extends Stage implements IObject
 				__Index.setFill(Color.GRAY);
 				Text __Desc = new Text(_Item.GetDescription().isEmpty() ? _Item.GetRawLine() : _Item.GetDescription());
 				HBox __Box = new HBox(2, __Index, __Desc);
-				setGraphic(__Box);
-				setText(null);
-			}
-		}
-	}
-
-	/**
-	 * Cell factory for the stash file list.
-	 * Displays a coloured single-letter status code (A/D/M) followed by the
-	 * file path so the user can quickly gauge the stash's scope.
-	 */
-	private static class StashFileCell extends ListCell<StashEntry.StashFile>
-	{
-		@Override
-		protected void updateItem(StashEntry.StashFile _Item, boolean _Empty)
-		{
-			super.updateItem(_Item, _Empty);
-			if (_Empty || _Item == null)
-			{
-				setText(null);
-				setGraphic(null);
-			}
-			else
-			{
-				String __StatusStr = switch (_Item.Status())
-				{
-					case Added -> "A";
-					case Removed -> "D";
-					case Modified -> "M";
-				};
-				Text __Status = new Text(__StatusStr + "  ");
-				__Status.setFill(switch (_Item.Status())
-				{
-					case Added -> Color.GREEN;
-					case Removed -> Color.RED;
-					case Modified -> Color.ORANGE;
-				});
-				Text __Path = new Text(_Item.Path());
-				HBox __Box = new HBox(4, __Status, __Path);
 				setGraphic(__Box);
 				setText(null);
 			}
