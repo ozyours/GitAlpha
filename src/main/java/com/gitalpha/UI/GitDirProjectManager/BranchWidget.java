@@ -3,6 +3,7 @@ package com.gitalpha.UI.GitDirProjectManager;
 import com.gitalpha.Engine.Debug;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.GitBranch;
+import com.gitalpha.Theme.ThemeManager;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ContextMenu;
@@ -355,6 +356,7 @@ class BranchWidget extends BaseWidget
 				Platform.runLater(() ->
 				{
 					Alert alert = new Alert(Alert.AlertType.ERROR);
+					ThemeManager.Instance.ApplyThemeToDialog(alert);
 					alert.setTitle("Checkout Failed");
 					alert.setHeaderText("Failed to checkout branch");
 					alert.setContentText(__Err);

@@ -1,6 +1,7 @@
 package com.gitalpha.UI;
 
 import com.gitalpha.Engine.AlphaEngine;
+import com.gitalpha.Theme.ThemeManager;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -21,6 +22,12 @@ public class MainJavaFx extends Application
 	@Override
 	public void start(Stage stage) throws Exception
 	{
+		// No user-agent stylesheet override: the stock JavaFX Modena skin is used
+		// and themed widgets (AButton and friends) carry their own inline skins
+		// baked from the active ColorPalette by ThemeManager. The scene itself is
+		// registered with ThemeManager, which swaps in the scene-level base
+		// stylesheet (the .root focus-ring kill + palette CSS variables).
+
 		AlphaEngine.Instance.LoadSession();
 		if (AlphaUI.Instance == null)
 			new AlphaUI();
@@ -31,6 +38,7 @@ public class MainJavaFx extends Application
 		// COMMIT_ROW_PREF_HEIGHT in GitDirWidget), plus the tab
 		// header.
 		Scene __Scene = new Scene(AlphaUI.Instance, 800, 780);
+		ThemeManager.Instance.RegisterScene(__Scene);
 		stage.setTitle("Git Alpha");
 		stage.setScene(__Scene);
 

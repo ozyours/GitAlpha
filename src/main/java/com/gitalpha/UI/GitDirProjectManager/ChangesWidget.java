@@ -6,12 +6,16 @@ import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.EFileChangeStatus;
 import com.gitalpha.Type.EFileChangeScope;
 import com.gitalpha.Type.FileChange;
+import com.gitalpha.UI.Components.ACheckBox;
+import com.gitalpha.UI.Components.AListView;
+import com.gitalpha.UI.Components.AText;
+import com.gitalpha.Theme.ETextVariant;
+import com.gitalpha.Theme.ThemeManager;
 import com.gitalpha.UI.IObject;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 
@@ -26,15 +30,16 @@ import java.util.List;
  * or a persistent section header ("Staged"/"Unstaged"). Header rows carry no
  * FileChange and are never selectable; file entries route their stage toggle
  * to the owning ChangesWidget.
- */
-class ChangeEntryWidget extends HBox implements IObject
-{
-	private static final int SPACING = 10;
-	private static final int PADDING = 5;
+ */	class ChangeEntryWidget extends HBox implements IObject
+	{
+		private static final int SPACING = 10;
+		// Minimal vertical padding: ChangesWidget measures this row to pin the
+		// ListView cell size, so every px saved here shrinks the whole list.
+		private static final int PADDING = 2;
 
 	private final ChangesWidget ChangesWidget;
 	private final FileChange FileChangeTarget;
-	private final CheckBox CommitCheckBox;
+	private final ACheckBox CommitCheckBox;
 	final boolean IsHeader;
 
 	/**
@@ -54,8 +59,9 @@ class ChangeEntryWidget extends HBox implements IObject
 		setSpacing(SPACING);
 		setPadding(new Insets(PADDING));
 
-		// Create checkbox for selecting files to commit
-		CommitCheckBox = new CheckBox();
+		// Create checkbox for selecting files to commit; the ACheckBox skin
+		// (flat minimalist box, zero padding, hand cursor) keeps rows tight.
+		CommitCheckBox = new ACheckBox();
 		CommitCheckBox.setSelected(FileChangeTarget.GetScope() == EFileChangeScope.STAGED);
 		CommitCheckBox.setOnAction(event ->
 		{
@@ -63,14 +69,13 @@ class ChangeEntryWidget extends HBox implements IObject
 		});
 
 		// Create text showing file status and path
-		Text statusText = CreateStatusText(FileChangeTarget.GetStatus());
+		AText statusText = CreateStatusText(FileChangeTarget.GetStatus());
 
-		// Show full relative path: directory portion in gray, filename in normal color
+		// Show full relative path: directory portion in muted color, filename in normal color
 		Path __RelativePath = ChangesWidget.GetGitDirTarget().GetRepoRootPath().relativize(FileChangeTarget.GetFilePath());
 		Path __ParentDir = __RelativePath.getParent();
-		Text dirText = new Text(__ParentDir != null ? __ParentDir.toString() + "\\" : "");
-		dirText.setFill(Color.GRAY);
-		Text fileText = new Text(__RelativePath.getFileName().toString());
+		AText dirText = new AText(__ParentDir != null ? __ParentDir.toString() + "\\" : "", ETextVariant.MUTED);
+		AText fileText = new AText(__RelativePath.getFileName().toString(), ETextVariant.BODY);
 		TextFlow pathFlow = new TextFlow(dirText, fileText);
 
 		// Add components to the entry
@@ -80,7 +85,10 @@ class ChangeEntryWidget extends HBox implements IObject
 	/**
 	 * Creates a persistent section header row ("Staged"/"Unstaged"). Headers
 	 * have no FileChange and keep an invisible checkbox so the row layout stays
-	 * aligned with file entries.
+	 * aligned with file entries. The title stays a plain bold {@link Text}
+	 * rather than an {@link AText}: headers are persistent, non-color-coded
+	 * labels whose bold weight is fixed, and the default text color reads fine
+	 * in both themes.
 	 *
 	 * @param _HeaderText the section title rendered in bold
 	 */
@@ -96,7 +104,7 @@ class ChangeEntryWidget extends HBox implements IObject
 		headerText.setStyle("-fx-font-weight: bold;");
 		getChildren().add(headerText);
 
-		CommitCheckBox = new CheckBox();
+		CommitCheckBox = new ACheckBox();
 		CommitCheckBox.setVisible(false);
 		CommitCheckBox.setManaged(false);
 	}
@@ -124,24 +132,23 @@ class ChangeEntryWidget extends HBox implements IObject
 		return FileChangeTarget;
 	}
 
-	private Text CreateStatusText(EFileChangeStatus status)
+	private AText CreateStatusText(EFileChangeStatus _Status)
 	{
-		Text statusText = new Text();
-		statusText.setText(switch (status)
+		// The status colour maps to the palette's git status slots, so a theme
+		// switch re-colours every row via AText's theme listener.
+		ETextVariant __Variant = switch (_Status)
 		{
-			case Added -> "[Added] ";
-			case Modified -> "[Modified] ";
-			case Removed -> "[Removed] ";
-		});
-
-		statusText.setFill(switch (status)
+			case Added -> ETextVariant.SUCCESS;
+			case Modified -> ETextVariant.MODIFIED;
+			case Removed -> ETextVariant.ERROR;
+		};
+		// Single-letter git status codes keep rows compact; the colour carries the meaning.
+		return new AText(switch (_Status)
 		{
-			case Added -> Color.GREEN;
-			case Modified -> Color.ORANGE;
-			case Removed -> Color.RED;
-		});
-
-		return statusText;
+			case Added -> "[A] ";
+			case Modified -> "[M] ";
+			case Removed -> "[R] ";
+		}, __Variant);
 	}
 
 	@Override
@@ -161,14 +168,14 @@ public class ChangesWidget extends BaseWidget
 	private static final int SPACING = 10;
 	private static final int PADDING = 5;
 	/** Fallback uniform row height (px) used if the sample measurement fails */
-	private static final double DEFAULT_ROW_HEIGHT = 32.0;
+	private static final double DEFAULT_ROW_HEIGHT = 26.0;
 	/**
 	 * Extra height (px) added to the measured entry height to cover the default
 	 * {@code .list-cell} vertical padding (0.25em top + bottom in Modena).
 	 */
 	private static final double LIST_CELL_VERTICAL_PADDING = 8.0;
 
-	private final ListView<ChangeEntryWidget> ChangesListView;
+	private final AListView<ChangeEntryWidget> ChangesListView;
 
 	/** Persistent header widgets — reused across refreshes so a highlighted header keeps its highlight */
 	private final ChangeEntryWidget StagedHeader = new ChangeEntryWidget("Staged");
@@ -182,7 +189,9 @@ public class ChangesWidget extends BaseWidget
 		// setFixedCellSize (see ComputeFixedCellSize) as a workaround for the
 		// JavaFX VirtualFlow size-estimation regression that breaks scrolling
 		// for long lists (JDK-8296871 / JDK-8301375 / JDK-8328167).
-		ChangesListView = new ListView<>();
+		ChangesListView = new AListView<>();
+		// The AListView skin bakes the flat palette background (no alternating-row
+		// stripes, no default border ring) and the minimalist scrollbar.
 		ChangesListView.setFixedCellSize(ComputeFixedCellSize());
 		// Multi-selection: Ctrl/Shift-click selects several entries; the diff
 		// viewer follows the focused (last-clicked) item, and toggling the
@@ -477,6 +486,7 @@ public class ChangesWidget extends BaseWidget
 						__Box.setSelected(!_ShouldBeStaged);
 
 					Alert __Alert = new Alert(Alert.AlertType.ERROR);
+					ThemeManager.Instance.ApplyThemeToDialog(__Alert);
 					__Alert.setTitle("Git Operation Failed");
 					__Alert.setHeaderText(_ShouldBeStaged ? "Failed to stage files" : "Failed to unstage files");
 					__Alert.setContentText(__Err);

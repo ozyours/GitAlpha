@@ -2,6 +2,12 @@ package com.gitalpha.UI.GitDirProjectManager;
 
 import com.gitalpha.Engine.ERefreshPolicy;
 import com.gitalpha.Engine.GitDir;
+import com.gitalpha.Theme.ETextVariant;
+import com.gitalpha.Theme.ThemeManager;
+import com.gitalpha.UI.Components.AButton;
+import com.gitalpha.UI.Components.AText;
+import com.gitalpha.UI.Components.ATextArea;
+import com.gitalpha.UI.Components.ATextField;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
@@ -19,35 +25,39 @@ public class CommitWidget extends BaseWidget
 	private static final int SPACING = 10;
 	private static final int PADDING = 5;
 
-	/** Single-line commit subject; Enter in this field also submits the commit */
-	private final TextField txb_CommitSummary;
-	/** Optional multi-line commit body, passed as a second -m so git stores it as the commit body */
-	private final TextArea txa_CommitDescription;
-	/** Submits the commit; disabled while a commit operation is in flight */
-	private final Button btn_Commit;
+	/** Single-line commit subject; Enter in this field also submits the commit.
+	 *  Uses the themed {@link ATextField} control so it inherits the app-wide
+	 *  input styling instead of the stock JavaFX look. */
+	private final ATextField txb_CommitSummary;
+	/** Optional multi-line commit body, passed as a second -m so git stores it as the commit body.
+	 *  Uses the themed {@link ATextArea} control so it inherits the app-wide
+	 *  input styling instead of the stock JavaFX look. */
+	private final ATextArea txa_CommitDescription;
+	/** Submits the commit; disabled while a commit operation is in flight.
+	 *  Uses the themed {@link AButton} control so it inherits the app-wide
+	 *  button styling instead of the stock JavaFX look. */
+	private final AButton btn_Commit;
 
 	public CommitWidget(GitDir _GitDirTarget, GitDirWidget _GitDirWidgetTarget)
 	{
 		super(_GitDirTarget, _GitDirWidgetTarget);
 
 		// Single-line commit subject
-		txb_CommitSummary = new TextField();
+		txb_CommitSummary = new ATextField();
 		txb_CommitSummary.setPromptText("Commit summary");
 		txb_CommitSummary.setOnAction(event -> CommitChanges());
 
 		// Multi-line commit body
-		txa_CommitDescription = new TextArea();
+		txa_CommitDescription = new ATextArea();
 		txa_CommitDescription.setPromptText("Commit description");
 		txa_CommitDescription.setPrefRowCount(4);
 
-		btn_Commit = new Button("Commit");
+		btn_Commit = new AButton("Commit");
 		btn_Commit.setMaxWidth(Double.MAX_VALUE);
 		btn_Commit.setOnAction(event -> CommitChanges());
 
-		Label summaryLabel = new Label("Summary");
-		summaryLabel.setStyle("-fx-font-weight: bold;");
-		Label descriptionLabel = new Label("Description");
-		descriptionLabel.setStyle("-fx-font-weight: bold;");
+		AText summaryLabel = new AText("Summary", ETextVariant.BOLD);
+		AText descriptionLabel = new AText("Description", ETextVariant.BOLD);
 
 		VBox layout = new VBox(summaryLabel, txb_CommitSummary, descriptionLabel, txa_CommitDescription, btn_Commit);
 		layout.setSpacing(SPACING);
@@ -73,6 +83,7 @@ public class CommitWidget extends BaseWidget
 		if (__Summary.isEmpty())
 		{
 			Alert __Alert = new Alert(Alert.AlertType.WARNING);
+			ThemeManager.Instance.ApplyThemeToDialog(__Alert);
 			__Alert.setTitle("Commit");
 			__Alert.setHeaderText("Commit summary is required");
 			__Alert.setContentText("Enter a commit summary before committing.");
@@ -109,6 +120,7 @@ public class CommitWidget extends BaseWidget
 				if (!__Ok)
 				{
 					Alert __Alert = new Alert(Alert.AlertType.ERROR);
+					ThemeManager.Instance.ApplyThemeToDialog(__Alert);
 					__Alert.setTitle("Git Operation Failed");
 					__Alert.setHeaderText("Failed to commit changes");
 					__Alert.setContentText(__Err);

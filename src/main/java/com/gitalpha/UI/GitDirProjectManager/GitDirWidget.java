@@ -4,10 +4,10 @@ import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Engine.GitDirContainer.IRefreshGitDirEvent;
 import com.gitalpha.Type.FileChange;
+import com.gitalpha.UI.Components.ATabPane;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
 import javafx.scene.control.Tab;
-import javafx.scene.control.TabPane;
 import javafx.scene.layout.*;
 
 import java.util.Objects;
@@ -100,7 +100,7 @@ public class GitDirWidget extends StackPane
 		Tab __HistoryTab = new Tab("History", TreeViewWidgetInstance);
 		__ChangesTab.setClosable(false);
 		__HistoryTab.setClosable(false);
-		TabPane __SubTabPane = new TabPane(__ChangesTab, __HistoryTab);
+		ATabPane __SubTabPane = new ATabPane(__ChangesTab, __HistoryTab);
 
 		__OuterGrid.add(__SubTabPane, 0, 0);
 		__OuterGrid.add(TextViewerWidgetInstance, 1, 0);

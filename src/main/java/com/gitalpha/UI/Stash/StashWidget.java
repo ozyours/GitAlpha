@@ -5,6 +5,10 @@ import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Type.EStashMode;
 import com.gitalpha.Type.StashEntry;
 import com.gitalpha.Type.StashWindowState;
+import com.gitalpha.Theme.ThemeManager;
+import com.gitalpha.UI.Components.AButton;
+import com.gitalpha.UI.Components.AComboBox;
+import com.gitalpha.UI.Components.AListView;
 import com.gitalpha.UI.GitDirProjectManager.ImmutableChangesWidget;
 import com.gitalpha.UI.GitDirProjectManager.TextViewerWidget;
 import com.gitalpha.UI.IObject;
@@ -58,7 +62,7 @@ public class StashWidget extends Stage implements IObject
 	 * Stash list (the selection source); the centre file list is the shared
 	 * {@link ImmutableChangesWidget} below
 	 */
-	private final ListView<StashEntry> lst_StashList;
+	private final AListView<StashEntry> lst_StashList;
 	/**
 	 * Read-only file-change list following the stash selection; selection is
 	 * routed to the diff viewer through the widget's selection handler
@@ -85,17 +89,17 @@ public class StashWidget extends Stage implements IObject
 	/**
 	 * Bottom action buttons — enabled/disabled based on selection
 	 */
-	private final Button btn_Rename;
-	private final Button btn_Pop;
-	private final Button btn_Drop;
-	private final Button btn_Apply;
-	private final Button btn_Save;
+	private final AButton btn_Rename;
+	private final AButton btn_Pop;
+	private final AButton btn_Drop;
+	private final AButton btn_Apply;
+	private final AButton btn_Save;
 	/**
 	 * Mode selector for the Save operation: which files {@code git stash push}
 	 * captures (see {@link EStashMode}). Disabled during in-flight operations
 	 * together with the action buttons.
 	 */
-	private final ComboBox<EStashMode> cmb_StashMode;
+	private final AComboBox<EStashMode> cmb_StashMode;
 	/**
 	 * Auto Restore checkbox: when checked, a successful Save immediately
 	 * applies the new stash ({@code stash@{0}}) back, so the stashed changes
@@ -132,7 +136,7 @@ public class StashWidget extends Stage implements IObject
 		GitDirTarget = _GitDirTarget;
 
 		// --- Left pane: stash list ---
-		lst_StashList = new ListView<>(StashEntries);
+		lst_StashList = new AListView<>(StashEntries);
 		lst_StashList.setCellFactory(__List -> new StashListCell());
 		lst_StashList.getSelectionModel().selectedItemProperty().addListener((__Obs, __Old, __New) ->
 		{
@@ -156,29 +160,29 @@ public class StashWidget extends Stage implements IObject
 		VBox.setVgrow(DiffViewer, Priority.ALWAYS);
 
 		// --- Bottom buttons ---
-		btn_Save = new Button("Save");
+		btn_Save = new AButton("Save");
 		btn_Save.setTooltip(new Tooltip("Create a new stash from current changes"));
 		btn_Save.setOnAction(__Event -> OnSaveStash());
 
-		btn_Rename = new Button("Rename");
+		btn_Rename = new AButton("Rename");
 		btn_Rename.setDisable(true);
 		btn_Rename.setOnAction(__Event -> OnRenameStash());
 
-		btn_Pop = new Button("Pop");
+		btn_Pop = new AButton("Pop");
 		btn_Pop.setDisable(true);
 		btn_Pop.setOnAction(__Event -> OnPopStash());
 
-		btn_Drop = new Button("Drop");
+		btn_Drop = new AButton("Drop");
 		btn_Drop.setDisable(true);
 		btn_Drop.setOnAction(__Event -> OnDropStash());
 
-		btn_Apply = new Button("Apply");
+		btn_Apply = new AButton("Apply");
 		btn_Apply.setDisable(true);
 		btn_Apply.setOnAction(__Event -> OnApplyStash());
 
 		// Mode selector for Save: populated from the enum values, with the
 		// first (Default) mode preselected so the combo never starts empty.
-		cmb_StashMode = new ComboBox<>(FXCollections.observableArrayList(EStashMode.values()));
+		cmb_StashMode = new AComboBox<>(FXCollections.observableArrayList(EStashMode.values()));
 		cmb_StashMode.getSelectionModel().selectFirst();
 		cmb_StashMode.setTooltip(new Tooltip("Which files the Save operation stashes"));
 
@@ -189,7 +193,7 @@ public class StashWidget extends Stage implements IObject
 		chk_AutoRestore = new CheckBox("Auto Restore");
 		chk_AutoRestore.setTooltip(new Tooltip("After Save, immediately re-apply the stash so the changes stay in the working tree"));
 
-		Button btn_Close = new Button("Close");
+		AButton btn_Close = new AButton("Close");
 		btn_Close.setOnAction(__Event -> close());
 
 		// Bottom-bar layout: the selection-dependent operations stay left-aligned
@@ -212,7 +216,11 @@ public class StashWidget extends Stage implements IObject
 
 		// --- Window setup ---
 		setTitle("Stash — " + GitDirTarget.GetGitDirPath().getParent().getFileName());
-		setScene(new Scene(root, 1000, 600));
+		Scene __Scene = new Scene(root, 1000, 600);
+		setScene(__Scene);
+		// Register so the scene-level base theme (the .root focus-ring kill +
+		// palette CSS variables) applies to this window too.
+		ThemeManager.Instance.RegisterScene(__Scene);
 		initModality(Modality.NONE);
 
 		// Restore the persisted window state (position, size, maximized) before
@@ -473,6 +481,7 @@ public class StashWidget extends Stage implements IObject
 	private void OnSaveStash()
 	{
 		TextInputDialog __Dialog = new TextInputDialog();
+		ThemeManager.Instance.ApplyThemeToDialog(__Dialog);
 		__Dialog.setTitle("Create Stash");
 		__Dialog.setHeaderText("Enter a stash description (optional)");
 		__Dialog.setContentText("Description:");
@@ -566,11 +575,10 @@ public class StashWidget extends Stage implements IObject
 		// for explicit confirmation and quote the description to make clear
 		// exactly which stash is about to be lost.
 		Alert __Confirm = new Alert(Alert.AlertType.CONFIRMATION);
+		ThemeManager.Instance.ApplyThemeToDialog(__Confirm);
 		__Confirm.setTitle("Drop Stash");
 		__Confirm.setHeaderText("Drop the selected stash?");
-		__Confirm.setContentText(SelectedStash.GetDescription().isEmpty()
-			? "This permanently deletes " + SelectedStash.GetStashRef() + " with no way to recover its changes."
-			: "This permanently deletes " + SelectedStash.GetStashRef() + " (\"" + SelectedStash.GetDescription() + "\") with no way to recover its changes.");
+		__Confirm.setContentText(SelectedStash.GetDescription().isEmpty() ? "This permanently deletes " + SelectedStash.GetStashRef() + " with no way to recover its changes." : "This permanently deletes " + SelectedStash.GetStashRef() + " (\"" + SelectedStash.GetDescription() + "\") with no way to recover its changes.");
 		__Confirm.showAndWait().ifPresent(__Response ->
 		{
 			if (__Response != ButtonType.OK)
@@ -626,6 +634,7 @@ public class StashWidget extends Stage implements IObject
 			return;
 
 		TextInputDialog __Dialog = new TextInputDialog(SelectedStash.GetDescription());
+		ThemeManager.Instance.ApplyThemeToDialog(__Dialog);
 		__Dialog.setTitle("Rename Stash");
 		__Dialog.setHeaderText("Enter a new description for this stash");
 		__Dialog.setContentText("Description:");
@@ -692,6 +701,7 @@ public class StashWidget extends Stage implements IObject
 	private void ShowError(String _Header, String _Content)
 	{
 		Alert __Alert = new Alert(Alert.AlertType.ERROR);
+		ThemeManager.Instance.ApplyThemeToDialog(__Alert);
 		__Alert.setTitle("Stash");
 		__Alert.setHeaderText(_Header);
 		__Alert.setContentText(_Content);

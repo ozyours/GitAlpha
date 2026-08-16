@@ -1,5 +1,6 @@
 package com.gitalpha.UI;
 
+import com.gitalpha.Theme.ThemeManager;
 import javafx.scene.control.Alert;
 
 /**
@@ -21,6 +22,7 @@ public final class PlaceholderNotice
 	public static void ShowNotImplemented(String _Feature)
 	{
 		Alert __Alert = new Alert(Alert.AlertType.INFORMATION);
+		ThemeManager.Instance.ApplyThemeToDialog(__Alert);
 		__Alert.setTitle("Not implemented yet");
 		__Alert.setHeaderText(null);
 		__Alert.setContentText("'" + _Feature + "' is a placeholder entry (see ROADMAP.md for planned work).");

@@ -1,11 +1,10 @@
 package com.gitalpha.UI.GitDirProjectManager;
-
 import com.gitalpha.Type.EFileChangeStatus;
 import com.gitalpha.Type.IFileListEntry;
+import com.gitalpha.UI.Components.AListView;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.control.ListCell;
-import javafx.scene.control.ListView;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
@@ -15,12 +14,12 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Read-only file-change list: each row shows a coloured single-letter status
- * (A/D/M) followed by the file path, and selection is reported through a
- * callback so the owner decides what to display (working-tree diffs vs raw
- * stash/commit diffs differ). Extracted from the stash window; reused by the
- * history view for commit files. Entries only need to implement
- * {@link IFileListEntry}.
+* Read-only file-change list: each row shows a bracketed single-letter
+	 * status ({@code [A]/[D]/[M]}) followed by the file path, and selection is
+	 * reported through a callback so the owner decides what to display
+	 * (working-tree diffs vs raw stash/commit diffs differ). Extracted from the
+	 * stash window; reused by the history view for commit files. Entries only
+	 * need to implement {@link IFileListEntry}.
  *
  * @param <T> entry type; must expose a path + status via {@link IFileListEntry}
  */
@@ -30,7 +29,7 @@ public class ImmutableChangesWidget<T extends IFileListEntry> extends StackPane
 	private Consumer<T> SelectionHandler = null;
 
 	/** The list view; its cell factory renders the status letter + path for each entry */
-	private final ListView<T> ListViewInstance;
+	private final AListView<T> ListViewInstance;
 	/** Backing list, replaced wholesale by {@link #SetEntries} / {@link #Clear} */
 	private final ObservableList<T> Items = FXCollections.observableArrayList();
 
@@ -41,7 +40,7 @@ public class ImmutableChangesWidget<T extends IFileListEntry> extends StackPane
 	 */
 	public ImmutableChangesWidget()
 	{
-		ListViewInstance = new ListView<>(Items);
+		ListViewInstance = new AListView<>(Items);
 		ListViewInstance.setCellFactory(__List -> new FileListCell<T>());
 		// Selection is reported through the handler; the owner routes it to the
 		// diff viewer (the diff format depends on the entry source).
@@ -86,10 +85,11 @@ public class ImmutableChangesWidget<T extends IFileListEntry> extends StackPane
 	}
 
 	/**
-	 * Recycled list cell rendering a coloured single-letter status code (A/D/M)
-	 * followed by the file path (moved from StashWidget.StashFileCell). Cells
-	 * are reused by VirtualFlow, so {@code updateItem} resets the text and
-	 * graphic on every call before building the row for the new entry.
+	 * Recycled list cell rendering a bracketed single-letter status code
+	 * ({@code [A]/[D]/[M]}) followed by the file path (moved from
+	 * StashWidget.StashFileCell). Cells are reused by VirtualFlow, so
+	 * {@code updateItem} resets the text and graphic on every call before
+	 * building the row for the new entry.
 	 */
 	private static class FileListCell<T extends IFileListEntry> extends ListCell<T>
 	{
@@ -104,14 +104,14 @@ public class ImmutableChangesWidget<T extends IFileListEntry> extends StackPane
 				return;
 			}
 
-			// Compact single-letter codes; colours mirror the working-tree
+			// Compact bracketed codes; colours mirror the working-tree
 			// changes list (green = added, red = removed, orange = modified)
 			// so both lists read consistently.
 			String __StatusStr = switch (_Item.GetStatus())
 			{
-				case Added -> "A";
-				case Removed -> "D";
-				case Modified -> "M";
+				case Added -> "[A]";
+				case Removed -> "[D]";
+				case Modified -> "[M]";
 			};
 			Text __Status = new Text(__StatusStr + "  ");
 			__Status.setFill(switch (_Item.GetStatus())

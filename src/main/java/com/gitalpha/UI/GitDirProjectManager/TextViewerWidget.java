@@ -2,8 +2,11 @@ package com.gitalpha.UI.GitDirProjectManager;
 
 import com.gitalpha.Engine.Debug;
 import com.gitalpha.Engine.GitDir;
-import com.gitalpha.Type.EFileLoadGuard;
+import com.gitalpha.Theme.ETextVariant;
 import com.gitalpha.Type.FileChange;
+import com.gitalpha.UI.Components.AListView;
+import com.gitalpha.UI.Components.AScrollBar;
+import com.gitalpha.UI.Components.AText;
 import javafx.application.Platform;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.SimpleDoubleProperty;
@@ -36,29 +39,34 @@ import java.util.regex.Pattern;
  * regardless of the diff size (the previous ScrollPane + VBox created one HBox
  * per row and froze on large files). The list always fills the pane, so its
  * vertical scrollbar stays pinned to the right edge of the viewport; rows wider
- * than the pane are panned by a bottom horizontal {@link ScrollBar} whose value
+ * than the pane are panned by a bottom horizontal {@link AScrollBar} whose value
  * drives {@link #PanOffset}, and each visible cell translates its row content
  * by {@code PanOffset.negate()} so only the content slides inside the cell.
+ * <p>
+ * Theming: the stats header (added/removed counts) and the overlay messages
+ * (loading / guard / large-file prompt / error) are {@link AText} nodes themed
+ * via {@link ETextVariant}, so they re-theme on palette switches. The per-row
+ * diff texts (line numbers, prefix, content) stay plain {@link Text} nodes
+ * with the fixed {@link #MONO_FONT} — they are bulk-created per visible row in
+ * a recycled cell factory, so per-node theme tracking would add listener
+ * overhead for transient nodes, and the fixed font keeps the row-width math
+ * ({@link #MONO_CHAR_WIDTH}) exact.
  */
 public class TextViewerWidget extends BaseWidget
 {
 	/** Monospaced font used for diff content rows */
 	private static final Font MONO_FONT = Font.font("Consolas", 13);
-	/** Larger monospaced font for the stats header bar */
-	private static final Font MONO_STATS_FONT = Font.font("Consolas", 16);
+	/** Stats header font size (px); the header counters use the MONO_* variants' Consolas family, larger than the 13px {@link #MONO_FONT} of the diff rows */
+	private static final double STATS_FONT_SIZE = 16;
 
 	/** Background colour for added lines */
 	private static final String ADDED_BG = "#e6ffec";
 	/** Left-side bar colour for added lines */
 	private static final String ADDED_BAR = "#2da44e";
-	/** Foreground colour for the added-line count in the stats header */
-	private static final Color ADDED_FG = Color.rgb(45, 164, 78);
 	/** Background colour for removed lines */
 	private static final String REMOVED_BG = "#ffebe9";
 	/** Left-side bar colour for removed lines */
 	private static final String REMOVED_BAR = "#cf222e";
-	/** Foreground colour for the removed-line count in the stats header */
-	private static final Color REMOVED_FG = Color.rgb(207, 34, 46);
 
 	/** Background for changed characters within an added line (deeper green) */
 	private static final String ADDED_INTRA_BG = "#abf2bc";
@@ -132,9 +140,10 @@ public class TextViewerWidget extends BaseWidget
 	private final ListView<PreparedRow> DiffListView;
 	/**
 	 * Bottom horizontal scrollbar that drives {@link #PanOffset}; visible only
-	 * when a content row is wider than the pane.
+	 * when a content row is wider than the pane. Themed (see {@link AScrollBar})
+	 * so it matches the diff list's own vertical scrollbar.
 	 */
-	private final ScrollBar DiffScrollBar = new ScrollBar();
+	private final AScrollBar DiffScrollBar = new AScrollBar();
 	/**
 	 * Horizontal pan (px) applied to the row content of every visible cell;
 	 * bound to the bottom scrollbar's value so the pan follows the thumb.
@@ -149,11 +158,11 @@ public class TextViewerWidget extends BaseWidget
 	 */
 	private final HBox hbox_StatsHeader;
 	/** Added-line count text ({@code +N}) shown in {@link #hbox_StatsHeader} */
-	private final Text txt_AddedCount;
+	private final AText txt_AddedCount;
 	/** Removed-line count text ({@code -M}) shown in {@link #hbox_StatsHeader} */
-	private final Text txt_RemovedCount;
+	private final AText txt_RemovedCount;
 	/** Static "Changes:" label shown in {@link #hbox_StatsHeader} */
-	private final Text txt_StatsLabel;
+	private final AText txt_StatsLabel;
 	/**
 	 * The file change whose diff is currently displayed; null if none.
 	 * Volatile because it is written on the JavaFX thread and read on the
@@ -202,17 +211,15 @@ public class TextViewerWidget extends BaseWidget
 
 		// Virtualized diff view: the ListView's VirtualFlow creates cells only for
 		// the visible rows, so the node count is O(visible) no matter the diff size.
-		DiffListView = new ListView<>();
+		DiffListView = new AListView<>();
 		DiffListView.setFixedCellSize(ComputeFixedCellSize());
 		DiffListView.setCellFactory(__List -> new DiffRowCell());
 		DiffListView.setFocusTraversable(false);
 
-		// Flat white viewport: the default ListView theme shades alternate rows
-		// (:odd cells paint -fx-control-inner-background-alt). Pinning both
-		// inner-background colours to white removes the alternating stripes so the
-		// whole viewer reads as a single white surface; the green/red diff rows
-		// keep their inline backgrounds (see RowBackgroundStyle).
-		DiffListView.setStyle("-fx-control-inner-background: white; -fx-control-inner-background-alt: white;");
+		// The AListView skin bakes the flat palette background (no alternating
+		// stripes, no default border ring) and the minimalist scrollbar,
+		// re-applying on theme switches; the green/red diff rows keep their
+		// inline backgrounds (see RowBackgroundStyle).
 
 		// The list always fills the pane, so its vertical scrollbar stays pinned
 		// to the right edge of the visible viewport. Wide lines are panned by
@@ -221,6 +228,9 @@ public class TextViewerWidget extends BaseWidget
 		// wider than the pane (so its content width can't inflate the GridPane
 		// column either).
 		DiffScrollBar.setOrientation(Orientation.HORIZONTAL);
+		// The AScrollBar skin bakes the minimalist scrollbar styling (the
+		// .a-scroll-bar rules in ThemeSkin) so the pan bar matches the diff
+		// list's own vertical scrollbar.
 		DiffScrollBar.setMin(0);
 		DiffScrollBar.setUnitIncrement(MONO_CHAR_WIDTH * 4);
 		DiffScrollBar.setVisible(false);
@@ -246,15 +256,9 @@ public class TextViewerWidget extends BaseWidget
 		// un-managed so it collapses to no height until a diff is rendered
 		// (see UpdateStatsHeader); kept in the same VBox as the list and pan
 		// bar so it sits above the diff and is never panned.
-		txt_StatsLabel = new Text("Changes:");
-		txt_StatsLabel.setFont(MONO_STATS_FONT);
-		txt_StatsLabel.setFill(Color.GRAY);
-		txt_AddedCount = new Text("+0");
-		txt_AddedCount.setFont(MONO_STATS_FONT);
-		txt_AddedCount.setFill(ADDED_FG);
-		txt_RemovedCount = new Text("-0");
-		txt_RemovedCount.setFont(MONO_STATS_FONT);
-		txt_RemovedCount.setFill(REMOVED_FG);
+		txt_StatsLabel = new AText("Changes:", ETextVariant.MONO_MUTED, STATS_FONT_SIZE);
+		txt_AddedCount = new AText("+0", ETextVariant.MONO_ADDED, STATS_FONT_SIZE);
+		txt_RemovedCount = new AText("-0", ETextVariant.MONO_REMOVED, STATS_FONT_SIZE);
 		hbox_StatsHeader = new HBox(8, txt_StatsLabel, txt_AddedCount, txt_RemovedCount);
 		hbox_StatsHeader.setAlignment(Pos.CENTER_LEFT);
 		hbox_StatsHeader.setPadding(new Insets(4, 8, 4, 8));
@@ -576,8 +580,7 @@ public class TextViewerWidget extends BaseWidget
 	/** Shows a centered "Loading..." overlay on top of the diff list. */
 	private void ShowLoadingIndicator()
 	{
-		Text loadingText = new Text("Loading...");
-		loadingText.setFont(MONO_FONT);
+		AText loadingText = new AText("Loading...", ETextVariant.MONO);
 		ShowOverlay(loadingText);
 	}
 
@@ -587,8 +590,7 @@ public class TextViewerWidget extends BaseWidget
 	 */
 	private void RenderGuardMessage(String _Message)
 	{
-		Text messageText = new Text(_Message);
-		messageText.setFont(MONO_FONT);
+		AText messageText = new AText(_Message, ETextVariant.MONO);
 		messageText.setTextAlignment(TextAlignment.CENTER);
 		ShowOverlay(messageText);
 	}
@@ -599,8 +601,7 @@ public class TextViewerWidget extends BaseWidget
 	 */
 	private void RenderLargeFilePrompt(FileChange _Target)
 	{
-		Text messageText = new Text("This file is large and will not be loaded automatically.");
-		messageText.setFont(MONO_FONT);
+		AText messageText = new AText("This file is large and will not be loaded automatically.", ETextVariant.MONO);
 		messageText.setTextAlignment(TextAlignment.CENTER);
 		messageText.setWrappingWidth(400);
 
@@ -622,8 +623,7 @@ public class TextViewerWidget extends BaseWidget
 	/** Renders an error message (from a failed diff load) centered over the diff list. */
 	private void RenderErrorMessage(Throwable _Exception)
 	{
-		Text errorText = new Text("Error: " + ExtractErrorMessage(_Exception));
-		errorText.setFont(MONO_FONT);
+		AText errorText = new AText("Error: " + ExtractErrorMessage(_Exception), ETextVariant.MONO);
 		ShowOverlay(errorText);
 	}
 

@@ -6,9 +6,9 @@ import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Engine.GitDirContainer.ICloseGitDirEvent;
 import com.gitalpha.Engine.GitDirContainer.IOpenGitDirEvent;
 import com.gitalpha.Function.GitDirFunction;
+import com.gitalpha.UI.Components.ATabPane;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
-import javafx.geometry.Insets;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.layout.BorderPane;
@@ -36,13 +36,13 @@ public class AlphaUI extends BorderPane
 		OpenTabsByProjectPath = new HashMap<>();
 
 		// Top chrome: the placeholder menu bar and quick command bar sit above
-		// the tab pane (BorderPane: top = chrome, center = tabs). A 64px bottom
-		// padding separates the quick command bar from the tab pane below.
+		// the tab pane (BorderPane: top = chrome, center = tabs). The quick
+		// command bar carries the chrome's own vertical spacing via its
+		// margins; the chrome VBox itself has no padding.
 		VBox __TopChrome = new VBox(new TopMenuBar(), new QuickCommandBar());
-		__TopChrome.setPadding(new Insets(0, 0, 8, 0));
 		setTop(__TopChrome);
 
-		TabPaneInstance = new TabPane();
+		TabPaneInstance = new ATabPane();
 		setCenter(TabPaneInstance);
 
 		TabPaneInstance.getTabs().add(new GitDirTabButton(this, null));

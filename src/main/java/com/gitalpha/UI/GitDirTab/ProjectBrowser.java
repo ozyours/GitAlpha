@@ -3,6 +3,7 @@ package com.gitalpha.UI.GitDirTab;
 import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Function.GitDirFunction;
+import com.gitalpha.Theme.ThemeManager;
 import com.gitalpha.UI.AlphaUI;
 import com.gitalpha.UI.GitDirEntryUI.GitDirContainerUI;
 import com.gitalpha.UI.IObject;
@@ -103,6 +104,7 @@ public class ProjectBrowser extends StackPane implements IObject
 	private void ShowInvalidPathWarning(String _Message)
 	{
 		Alert __Alert = new Alert(Alert.AlertType.WARNING);
+		ThemeManager.Instance.ApplyThemeToDialog(__Alert);
 		__Alert.setTitle("Invalid Project Path");
 		__Alert.setHeaderText("Unable to open project");
 		__Alert.setContentText(_Message);
