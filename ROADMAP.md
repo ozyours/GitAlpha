@@ -104,6 +104,15 @@ Items that were discussed and have been committed to `master`.
       generic read-only list over the new `IFileListEntry` contract (`StashEntry.StashFile`
       implements it); the stash Save mode (`EStashMode`) is now persisted in `StashWindowState`
       (`5bb7c87`)
+- [x] **Palette-driven theming** — `Theme` package (`ColorPalette` with 11 slots incl. the
+      active/passive highlight split, `LightTheme`/`DarkTheme`, session-persisted
+      `CustomColorPalette` with legacy `Highlight`-key migration, `ThemeManager` baking inline
+      data-URI skins + scene base CSS with `-gitalpha-*` variables, `EButtonVariant`/`ETextVariant`,
+      `IThemeChangeEvent`) + `Components` package (`AButton`, `ACheckBox`, `AComboBox`, `AListView`,
+      `AScrollBar`, `ATabPane`, `AText`, `ATextField`, `ATextArea`) re-baking on palette switches;
+      widgets migrated, all dialogs themed via `ApplyThemeToDialog`, both scenes registered via
+      `RegisterScene`, compact `[A]/[M]/[R]` + `[A]/[D]/[M]` status codes, list-cell hover/selected
+      rules mirroring Modena's virtual-flow path (`071a8d4`)
 
 ---
 
