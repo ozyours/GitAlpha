@@ -7,6 +7,7 @@ import com.gitalpha.Type.StashEntry;
 import com.gitalpha.Type.StashWindowState;
 import com.gitalpha.Theme.ThemeManager;
 import com.gitalpha.UI.Components.AButton;
+import com.gitalpha.UI.Components.ACheckBox;
 import com.gitalpha.UI.Components.AComboBox;
 import com.gitalpha.UI.Components.AListView;
 import com.gitalpha.UI.GitDirProjectManager.ImmutableChangesWidget;
@@ -106,7 +107,7 @@ public class StashWidget extends Stage implements IObject
 	 * stay in the working tree while a copy remains in the stash list.
 	 * The checked state is persisted in the session via {@link StashWindowState}.
 	 */
-	private final CheckBox chk_AutoRestore;
+	private final ACheckBox chk_AutoRestore;
 
 	/**
 	 * Monotonic counter invalidating in-flight stash-file-list loads when the
@@ -190,7 +191,8 @@ public class StashWidget extends Stage implements IObject
 		// stashed changes remain in the working tree. The checked state is
 		// persisted with the window state (see StashWindowState); its listener
 		// is attached once the retained state is restored (below).
-		chk_AutoRestore = new CheckBox("Auto Restore");
+		chk_AutoRestore = new ACheckBox();
+		chk_AutoRestore.setText("Auto Restore");
 		chk_AutoRestore.setTooltip(new Tooltip("After Save, immediately re-apply the stash so the changes stay in the working tree"));
 
 		AButton btn_Close = new AButton("Close");

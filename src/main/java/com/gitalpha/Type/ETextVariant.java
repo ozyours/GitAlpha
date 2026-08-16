@@ -1,4 +1,8 @@
-package com.gitalpha.Theme;
+package com.gitalpha.Type;
+
+import com.gitalpha.Theme.ColorPalette;
+
+import java.util.Map;
 
 /**
  * Visual variants for themed text ({@link com.gitalpha.UI.Components.AText}).
@@ -45,27 +49,30 @@ public enum ETextVariant
 	 * The returned string is applied via {@code setStyle} (with an optional
 	 * font-size suffix appended by {@link com.gitalpha.UI.Components.AText}),
 	 * so each case must emit a complete, self-contained CSS declaration that
-	 * depends on nothing but the palette.
+	 * depends on nothing but the palette. Palette slots are resolved to hex
+	 * through the palette's lookup, so derived slots render by their resolved
+	 * color.
 	 *
 	 * @param _Palette the active palette to read colors from
 	 * @return the CSS style string for this variant
 	 */
 	public String ResolveCss(ColorPalette _Palette)
 	{
+		Map<String, ThemeColor> __Lookup = _Palette.GetColorLookup();
 		return switch (this)
 		{
-			case BODY -> "-fx-fill: " + _Palette.GetTextColor() + ";";
-			case MUTED -> "-fx-fill: " + _Palette.GetMutedTextColor() + ";";
-			case ACCENT -> "-fx-fill: " + _Palette.GetPrimaryColor() + ";";
-			case ERROR -> "-fx-fill: " + _Palette.GetRemovedColor() + ";";
-			case SUCCESS -> "-fx-fill: " + _Palette.GetAddedColor() + ";";
-			case MODIFIED -> "-fx-fill: " + _Palette.GetModifiedColor() + ";";
-			case MONO -> "-fx-fill: " + _Palette.GetTextColor() + "; -fx-font-family: Consolas;";
-			case MONO_MUTED -> "-fx-fill: " + _Palette.GetMutedTextColor() + "; -fx-font-family: Consolas;";
-			case MONO_ADDED -> "-fx-fill: " + _Palette.GetAddedColor() + "; -fx-font-family: Consolas;";
-			case MONO_REMOVED -> "-fx-fill: " + _Palette.GetRemovedColor() + "; -fx-font-family: Consolas;";
-			case TITLE -> "-fx-fill: " + _Palette.GetTextColor() + "; -fx-font-size: 16px; -fx-font-weight: bold;";
-			case BOLD -> "-fx-fill: " + _Palette.GetTextColor() + "; -fx-font-weight: bold;";
+			case BODY -> "-fx-fill: " + _Palette.GetTextColor().GetHex(__Lookup) + ";";
+			case MUTED -> "-fx-fill: " + _Palette.GetMutedTextColor().GetHex(__Lookup) + ";";
+			case ACCENT -> "-fx-fill: " + _Palette.GetPrimaryColor().GetHex(__Lookup) + ";";
+			case ERROR -> "-fx-fill: " + _Palette.GetRemovedColor().GetHex(__Lookup) + ";";
+			case SUCCESS -> "-fx-fill: " + _Palette.GetAddedColor().GetHex(__Lookup) + ";";
+			case MODIFIED -> "-fx-fill: " + _Palette.GetModifiedColor().GetHex(__Lookup) + ";";
+			case MONO -> "-fx-fill: " + _Palette.GetTextColor().GetHex(__Lookup) + "; -fx-font-family: Consolas;";
+			case MONO_MUTED -> "-fx-fill: " + _Palette.GetMutedTextColor().GetHex(__Lookup) + "; -fx-font-family: Consolas;";
+			case MONO_ADDED -> "-fx-fill: " + _Palette.GetAddedColor().GetHex(__Lookup) + "; -fx-font-family: Consolas;";
+			case MONO_REMOVED -> "-fx-fill: " + _Palette.GetRemovedColor().GetHex(__Lookup) + "; -fx-font-family: Consolas;";
+			case TITLE -> "-fx-fill: " + _Palette.GetTextColor().GetHex(__Lookup) + "; -fx-font-size: 16px; -fx-font-weight: bold;";
+			case BOLD -> "-fx-fill: " + _Palette.GetTextColor().GetHex(__Lookup) + "; -fx-font-weight: bold;";
 		};
 	}
 }

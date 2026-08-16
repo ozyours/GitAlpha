@@ -1,7 +1,7 @@
 package com.gitalpha.UI.Components;
 
 import com.gitalpha.Theme.ColorPalette;
-import com.gitalpha.Theme.EButtonVariant;
+import com.gitalpha.Type.EButtonVariant;
 import com.gitalpha.Theme.IThemeChangeEvent;
 import com.gitalpha.Theme.ThemeManager;
 import javafx.scene.control.Button;

@@ -2,7 +2,7 @@ package com.gitalpha.UI.GitDirProjectManager;
 
 import com.gitalpha.Engine.ERefreshPolicy;
 import com.gitalpha.Engine.GitDir;
-import com.gitalpha.Theme.ETextVariant;
+import com.gitalpha.Type.ETextVariant;
 import com.gitalpha.Theme.ThemeManager;
 import com.gitalpha.UI.Components.AButton;
 import com.gitalpha.UI.Components.AText;

@@ -2,7 +2,7 @@ package com.gitalpha.UI.GitDirProjectManager;
 
 import com.gitalpha.Engine.Debug;
 import com.gitalpha.Engine.GitDir;
-import com.gitalpha.Theme.ETextVariant;
+import com.gitalpha.Type.ETextVariant;
 import com.gitalpha.Type.FileChange;
 import com.gitalpha.UI.Components.AListView;
 import com.gitalpha.UI.Components.AScrollBar;

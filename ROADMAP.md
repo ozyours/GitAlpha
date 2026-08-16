@@ -114,6 +114,13 @@ Items that were discussed and have been committed to `master`.
       `RegisterScene`, compact `[A]/[M]/[R]` + `[A]/[D]/[M]` status codes, list-cell hover/selected
       rules mirroring Modena's virtual-flow path (`071a8d4`)
 
+### Implemented, awaiting commit
+
+- [ ] **ThemeColor typed color model** — `ThemeColor` (Theme package): sRGB float RGB + brightness
+      multiplier (0-1), direct/derived forms with hard-coded slot names, `Resolve(Map)` with cycle
+      guard, `GetHex(Map)` rendering `#rrggbb`, `ISerializable` storing only
+      R/G/B/Brightness/IsDerived (names stay code-side); staged, not yet committed
+
 ---
 
 ## Pending Plan
@@ -250,3 +257,17 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
       visible check-all control exists per section. Done = a real checkbox in each header
       (`ChangesWidget.java:163-164`) that checks/unchecks all entries in its section and batches the
       `git add`/`git reset` through the operator queue
+
+### Theming
+
+- [ ] **Palette migration to ThemeColor** — `ColorPalette` still stores the 11 base colors as hex
+      strings; the new `ThemeColor` (implemented, awaiting commit) is not wired in. Done =
+      `ColorPalette` fields become `ThemeColor` slots, `CustomColorPalette` type-sniffs legacy hex
+      strings vs ThemeColor JSON on load, `ThemeManager` bake sites read `GetHex()`,
+      `MixToward`/`ParseHex` move into `ThemeColor`, and `EButtonVariant` pressed slots become
+      derived colors
+- [ ] **Pressed-state feedback** — the `AButton` pressed slot maps to the border color (nearly
+      invisible in light theme) and the dialog default OK button has no `:default:pressed` rule
+      (`:default:hover` overrides `:pressed`), so clicks show little feedback. Done = pressed
+      derived from the passive/hover color (e.g. `derive(passive, -12%)` or a `ThemeColor` derived
+      slot) plus a `:default:pressed` rule in the dialog skin

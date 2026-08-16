@@ -1,24 +1,35 @@
 package com.gitalpha.Theme;
 
+import com.gitalpha.Type.ThemeColor;
+
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Abstract base for the app's themeable colors, kept as a plain data class
- * (hex strings only, no JavaFX dependency) so it can later serialize into the
- * session file like the other state objects. Widgets read their colors from
- * here instead of hardcoding them inline, so a single point can customize them
- * (presets, user overrides, live preview).
-	 * <p>
-	 * Two semantic roles: core UI colors (primary, text, muted text, border,
-	 * background, ...) and git status colors (added / removed / modified). The
-	 * highlight is split into an active slot (selected states: list/combo
-	 * selection, checked fill, text selection) and a passive slot (hover
-	 * states), so selected and hover feedback can be themed independently.
-	 * Each status color is a single user-facing base; the diff shades (row
-	 * background, intra-line highlight) are derived from the added/removed
-	 * bases by mixing toward the palette background, so the same base yields
-	 * correct tints in both light and dark themes.
+ * (no JavaFX dependency) so it can later serialize into the session file like
+ * the other state objects. Widgets read their colors from here instead of
+ * hardcoding them inline, so a single point can customize them (presets, user
+ * overrides, live preview).
+ * <p>
+ * Two semantic roles: core UI colors (primary, text, muted text, border,
+ * background, ...) and git status colors (added / removed / modified). The
+ * highlight is split into an active slot (selected states: list/combo
+ * selection, checked fill, text selection) and a passive slot (hover
+ * states), so selected and hover feedback can be themed independently.
+ * Each status color is a single user-facing base; the diff shades (row
+ * background, intra-line highlight) are derived from the added/removed
+ * bases by mixing toward the palette background, so the same base yields
+ * correct tints in both light and dark themes.
+ * <p>
+ * Colors are stored as {@link ThemeColor} values (sRGB floats + brightness,
+ * direct or derived form). Every slot carries a hard-coded name that other
+ * slots can derive from; {@link #GetColorLookup()} exposes the name-to-color
+ * map used to resolve derived slots.
  * <p>
  * Concrete themes are derived classes that populate the colors in their
- * constructor: {@link LightTheme}, {@link DarkTheme}, and the user-customized
+ * constructor: {@link com.gitalpha.Theme.Themes.LightTheme},
+ * {@link com.gitalpha.Theme.Themes.DarkTheme}, and the user-customized
  * {@link CustomColorPalette} (which adds session serialization).
  */
 public abstract class ColorPalette
@@ -33,224 +44,270 @@ public abstract class ColorPalette
 	/**
 	 * Copy every color value from another palette. Used by derived classes that
 	 * start from an existing theme and then override a subset (e.g. a user
-	 * customization seeded from the Light theme).
+	 * customization seeded from the Light theme). Values are copied, not
+	 * reference-shared, so mutating one palette never leaks into the other.
 	 *
 	 * @param _Source the palette to copy colors from
 	 */
 	protected void CopyFrom(ColorPalette _Source)
 	{
-		PrimaryColor = _Source.PrimaryColor;
-		SecondaryColor = _Source.SecondaryColor;
-		TextColor = _Source.TextColor;
-		MutedTextColor = _Source.MutedTextColor;
-		ActiveHighlightColor = _Source.ActiveHighlightColor;
-		PassiveHighlightColor = _Source.PassiveHighlightColor;
-		BorderColor = _Source.BorderColor;
-		BackgroundColor = _Source.BackgroundColor;
-		AddedColor = _Source.AddedColor;
-		RemovedColor = _Source.RemovedColor;
-		ModifiedColor = _Source.ModifiedColor;
+		PrimaryColor = _Source.PrimaryColor.Copy();
+		SecondaryColor = _Source.SecondaryColor.Copy();
+		TextColor = _Source.TextColor.Copy();
+		MutedTextColor = _Source.MutedTextColor.Copy();
+		ActiveHighlightColor = _Source.ActiveHighlightColor.Copy();
+		PassiveHighlightColor = _Source.PassiveHighlightColor.Copy();
+		BorderColor = _Source.BorderColor.Copy();
+		BackgroundColor = _Source.BackgroundColor.Copy();
+		AddedColor = _Source.AddedColor.Copy();
+		RemovedColor = _Source.RemovedColor.Copy();
+		ModifiedColor = _Source.ModifiedColor.Copy();
 	}
 
 	// --- Core UI colors ---
-	private String PrimaryColor;
-	private String SecondaryColor;
-	private String TextColor;
-	private String MutedTextColor;
-	private String ActiveHighlightColor;
-	private String PassiveHighlightColor;
-	private String BorderColor;
-	private String BackgroundColor;
+	private ThemeColor PrimaryColor;
+	private ThemeColor SecondaryColor;
+	private ThemeColor TextColor;
+	private ThemeColor MutedTextColor;
+	private ThemeColor ActiveHighlightColor;
+	private ThemeColor PassiveHighlightColor;
+	private ThemeColor BorderColor;
+	private ThemeColor BackgroundColor;
 	// --- Git status colors (bases; shades derived via MixToward) ---
-	private String AddedColor;
-	private String RemovedColor;
-	private String ModifiedColor;
+	private ThemeColor AddedColor;
+	private ThemeColor RemovedColor;
+	private ThemeColor ModifiedColor;
 
 	/**
-	 * @return the primary color as {@code #rrggbb} hex
+	 * @return the primary color
 	 */
-	public String GetPrimaryColor()
+	public ThemeColor GetPrimaryColor()
 	{
 		return PrimaryColor;
 	}
 
 	/**
-	 * @return the secondary color as {@code #rrggbb} hex
+	 * @return the secondary color
 	 */
-	public String GetSecondaryColor()
+	public ThemeColor GetSecondaryColor()
 	{
 		return SecondaryColor;
 	}
 
 	/**
-	 * @return the text color as {@code #rrggbb} hex
+	 * @return the text color
 	 */
-	public String GetTextColor()
+	public ThemeColor GetTextColor()
 	{
 		return TextColor;
 	}
 
 	/**
-	 * @return the muted text color as {@code #rrggbb} hex
+	 * @return the muted text color
 	 */
-	public String GetMutedTextColor()
+	public ThemeColor GetMutedTextColor()
 	{
 		return MutedTextColor;
 	}
 
 	/**
-	 * @return the active (selected) highlight color as {@code #rrggbb} hex
+	 * @return the active (selected) highlight color
 	 */
-	public String GetActiveHighlightColor()
+	public ThemeColor GetActiveHighlightColor()
 	{
 		return ActiveHighlightColor;
 	}
 
 	/**
-	 * @return the passive (hover) highlight color as {@code #rrggbb} hex
+	 * @return the passive (hover) highlight color
 	 */
-	public String GetPassiveHighlightColor()
+	public ThemeColor GetPassiveHighlightColor()
 	{
 		return PassiveHighlightColor;
 	}
 
 	/**
-	 * @return the border color as {@code #rrggbb} hex
+	 * @return the border color
 	 */
-	public String GetBorderColor()
+	public ThemeColor GetBorderColor()
 	{
 		return BorderColor;
 	}
 
 	/**
-	 * @return the background color as {@code #rrggbb} hex
+	 * @return the background color
 	 */
-	public String GetBackgroundColor()
+	public ThemeColor GetBackgroundColor()
 	{
 		return BackgroundColor;
 	}
 
 	/**
-	 * @return the added-status base color as {@code #rrggbb} hex
+	 * @return the added-status base color
 	 */
-	public String GetAddedColor()
+	public ThemeColor GetAddedColor()
 	{
 		return AddedColor;
 	}
 
 	/**
-	 * @return the removed-status base color as {@code #rrggbb} hex
+	 * @return the removed-status base color
 	 */
-	public String GetRemovedColor()
+	public ThemeColor GetRemovedColor()
 	{
 		return RemovedColor;
 	}
 
 	/**
-	 * @return the modified-status base color as {@code #rrggbb} hex
+	 * @return the modified-status base color
 	 */
-	public String GetModifiedColor()
+	public ThemeColor GetModifiedColor()
 	{
 		return ModifiedColor;
 	}
 
 	/**
-	 * Set the primary color as {@code #rrggbb} hex.
-	 * Not validated here; malformed values are rejected by {@link #ParseHex} when a derived shade is computed.
+	 * Set the primary color. The {@link ThemeColor} carries its own hard-coded
+	 * slot name, which is what other slots use to derive from it.
+	 *
+	 * @param _Color the color to store
 	 */
-	public void SetPrimaryColor(String _Hex)
+	public void SetPrimaryColor(ThemeColor _Color)
 	{
-		PrimaryColor = _Hex;
+		PrimaryColor = _Color;
 	}
 
 	/**
-	 * Set the secondary color as {@code #rrggbb} hex.
-	 * Not validated here; malformed values are rejected by {@link #ParseHex} when a derived shade is computed.
+	 * Set the secondary color.
+	 *
+	 * @param _Color the color to store
 	 */
-	public void SetSecondaryColor(String _Hex)
+	public void SetSecondaryColor(ThemeColor _Color)
 	{
-		SecondaryColor = _Hex;
+		SecondaryColor = _Color;
 	}
 
 	/**
-	 * Set the text color as {@code #rrggbb} hex.
-	 * Not validated here; malformed values are rejected by {@link #ParseHex} when a derived shade is computed.
+	 * Set the text color.
+	 *
+	 * @param _Color the color to store
 	 */
-	public void SetTextColor(String _Hex)
+	public void SetTextColor(ThemeColor _Color)
 	{
-		TextColor = _Hex;
+		TextColor = _Color;
 	}
 
 	/**
-	 * Set the muted text color as {@code #rrggbb} hex.
-	 * Not validated here; malformed values are rejected by {@link #ParseHex} when a derived shade is computed.
+	 * Set the muted text color.
+	 *
+	 * @param _Color the color to store
 	 */
-	public void SetMutedTextColor(String _Hex)
+	public void SetMutedTextColor(ThemeColor _Color)
 	{
-		MutedTextColor = _Hex;
+		MutedTextColor = _Color;
 	}
 
 	/**
-	 * Set the active (selected) highlight color as {@code #rrggbb} hex.
-	 * Not validated here; malformed values are rejected by {@link #ParseHex} when a derived shade is computed.
+	 * Set the active (selected) highlight color.
+	 *
+	 * @param _Color the color to store
 	 */
-	public void SetActiveHighlightColor(String _Hex)
+	public void SetActiveHighlightColor(ThemeColor _Color)
 	{
-		ActiveHighlightColor = _Hex;
+		ActiveHighlightColor = _Color;
 	}
 
 	/**
-	 * Set the passive (hover) highlight color as {@code #rrggbb} hex.
-	 * Not validated here; malformed values are rejected by {@link #ParseHex} when a derived shade is computed.
+	 * Set the passive (hover) highlight color.
+	 *
+	 * @param _Color the color to store
 	 */
-	public void SetPassiveHighlightColor(String _Hex)
+	public void SetPassiveHighlightColor(ThemeColor _Color)
 	{
-		PassiveHighlightColor = _Hex;
+		PassiveHighlightColor = _Color;
 	}
 
 	/**
-	 * Set the border color as {@code #rrggbb} hex.
-	 * Not validated here; malformed values are rejected by {@link #ParseHex} when a derived shade is computed.
+	 * Set the border color.
+	 *
+	 * @param _Color the color to store
 	 */
-	public void SetBorderColor(String _Hex)
+	public void SetBorderColor(ThemeColor _Color)
 	{
-		BorderColor = _Hex;
+		BorderColor = _Color;
 	}
 
 	/**
-	 * Set the background color as {@code #rrggbb} hex.
-	 * Not validated here; malformed values are rejected by {@link #ParseHex} when a derived shade is computed.
+	 * Set the background color.
+	 *
+	 * @param _Color the color to store
 	 */
-	public void SetBackgroundColor(String _Hex)
+	public void SetBackgroundColor(ThemeColor _Color)
 	{
-		BackgroundColor = _Hex;
+		BackgroundColor = _Color;
 	}
 
 	/**
-	 * Set the added-status base color as {@code #rrggbb} hex.
-	 * Not validated here; malformed values are rejected by {@link #ParseHex} when a derived shade is computed.
+	 * Set the added-status base color.
+	 *
+	 * @param _Color the color to store
 	 */
-	public void SetAddedColor(String _Hex)
+	public void SetAddedColor(ThemeColor _Color)
 	{
-		AddedColor = _Hex;
+		AddedColor = _Color;
 	}
 
 	/**
-	 * Set the removed-status base color as {@code #rrggbb} hex.
-	 * Not validated here; malformed values are rejected by {@link #ParseHex} when a derived shade is computed.
+	 * Set the removed-status base color.
+	 *
+	 * @param _Color the color to store
 	 */
-	public void SetRemovedColor(String _Hex)
+	public void SetRemovedColor(ThemeColor _Color)
 	{
-		RemovedColor = _Hex;
+		RemovedColor = _Color;
 	}
 
 	/**
-	 * Set the modified-status base color as {@code #rrggbb} hex.
-	 * Not validated here; malformed values are rejected by {@link #ParseHex} when a derived shade is computed.
+	 * Set the modified-status base color.
+	 *
+	 * @param _Color the color to store
 	 */
-	public void SetModifiedColor(String _Hex)
+	public void SetModifiedColor(ThemeColor _Color)
 	{
-		ModifiedColor = _Hex;
+		ModifiedColor = _Color;
+	}
+
+	/**
+	 * Build the name-to-color lookup used to resolve derived slots: every slot
+	 * registers under its hard-coded {@link ThemeColor#GetName()}. Built fresh
+	 * on each call so palette mutations are always reflected. All 11 slots are
+	 * populated by the concrete themes; a null slot is skipped defensively (a
+	 * derived slot referencing it then fails with a clear "unknown source"
+	 * error at resolve time instead of an opaque NPE here).
+	 *
+	 * @return a map of slot name to color
+	 */
+	public Map<String, ThemeColor> GetColorLookup()
+	{
+		Map<String, ThemeColor> __Lookup = new HashMap<>();
+		PutSlot(__Lookup, PrimaryColor);
+		PutSlot(__Lookup, SecondaryColor);
+		PutSlot(__Lookup, TextColor);
+		PutSlot(__Lookup, MutedTextColor);
+		PutSlot(__Lookup, ActiveHighlightColor);
+		PutSlot(__Lookup, PassiveHighlightColor);
+		PutSlot(__Lookup, BorderColor);
+		PutSlot(__Lookup, BackgroundColor);
+		PutSlot(__Lookup, AddedColor);
+		PutSlot(__Lookup, RemovedColor);
+		PutSlot(__Lookup, ModifiedColor);
+		return __Lookup;
+	}
+
+	private static void PutSlot(Map<String, ThemeColor> _Lookup, ThemeColor _Color)
+	{
+		if (_Color != null)
+			_Lookup.put(_Color.GetName(), _Color);
 	}
 
 	// --- Derived diff shades ---
@@ -297,27 +354,30 @@ public abstract class ColorPalette
 	 * variables use the {@code -gitalpha-} prefix to avoid colliding with the
 	 * base theme's own lookups.
 	 *
-	 * @return a CSS snippet declaring one {@code -gitalpha-*} variable per color
+	 * @return a CSS snippet declaring one {@code -gitalpha-*} variable per base
+	 *         color plus the four derived diff shades (added/removed row
+	 *         backgrounds and intra-line highlights)
 	 */
 	public String GetCssOverrides()
 	{
+		Map<String, ThemeColor> __Lookup = GetColorLookup();
 		StringBuilder __Css = new StringBuilder();
 		__Css.append(".root {\n");
-		AppendVar(__Css, "-gitalpha-primary", PrimaryColor);
-		AppendVar(__Css, "-gitalpha-secondary", SecondaryColor);
-		AppendVar(__Css, "-gitalpha-text", TextColor);
-		AppendVar(__Css, "-gitalpha-muted-text", MutedTextColor);
-		AppendVar(__Css, "-gitalpha-active-highlight", ActiveHighlightColor);
-		AppendVar(__Css, "-gitalpha-passive-highlight", PassiveHighlightColor);
-		AppendVar(__Css, "-gitalpha-border", BorderColor);
-		AppendVar(__Css, "-gitalpha-background", BackgroundColor);
-		AppendVar(__Css, "-gitalpha-added", AddedColor);
-		AppendVar(__Css, "-gitalpha-added-bg", GetAddedBackground());
-		AppendVar(__Css, "-gitalpha-added-intra", GetAddedIntra());
-		AppendVar(__Css, "-gitalpha-removed", RemovedColor);
-		AppendVar(__Css, "-gitalpha-removed-bg", GetRemovedBackground());
-		AppendVar(__Css, "-gitalpha-removed-intra", GetRemovedIntra());
-		AppendVar(__Css, "-gitalpha-modified", ModifiedColor);
+		AppendVar(__Css, "-gitalpha-primary", PrimaryColor.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-secondary", SecondaryColor.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-text", TextColor.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-muted-text", MutedTextColor.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-active-highlight", ActiveHighlightColor.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-passive-highlight", PassiveHighlightColor.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-border", BorderColor.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-background", BackgroundColor.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-added", AddedColor.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-added-bg", MixToward(AddedColor, BackgroundColor, 0.90, __Lookup));
+		AppendVar(__Css, "-gitalpha-added-intra", MixToward(AddedColor, BackgroundColor, 0.70, __Lookup));
+		AppendVar(__Css, "-gitalpha-removed", RemovedColor.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-removed-bg", MixToward(RemovedColor, BackgroundColor, 0.90, __Lookup));
+		AppendVar(__Css, "-gitalpha-removed-intra", MixToward(RemovedColor, BackgroundColor, 0.70, __Lookup));
+		AppendVar(__Css, "-gitalpha-modified", ModifiedColor.GetHex(__Lookup));
 		__Css.append("}\n");
 		return __Css.toString();
 	}
@@ -328,18 +388,34 @@ public abstract class ColorPalette
 	}
 
 	/**
-	 * Linearly mix two hex colors toward the second: {@code _T = 0.0} yields the
-	 * first color, {@code _T = 1.0} yields the second.
+	 * Linearly mix two colors toward the second: {@code _T = 0.0} yields the
+	 * first color, {@code _T = 1.0} yields the second. Both inputs are resolved
+	 * through the palette lookup, so derived slots mix by their resolved color.
 	 *
-	 * @param _FromHex start color as {@code #rrggbb}
-	 * @param _ToHex   end color as {@code #rrggbb}
-	 * @param _T       mix factor; clamped to [0, 1]
+	 * @param _From start color
+	 * @param _To   end color
+	 * @param _T    mix factor; clamped to [0, 1]
 	 * @return the mixed color as {@code #rrggbb}
 	 */
-	private static String MixToward(String _FromHex, String _ToHex, double _T)
+	private String MixToward(ThemeColor _From, ThemeColor _To, double _T)
 	{
-		int __From = ParseHex(_FromHex);
-		int __To = ParseHex(_ToHex);
+		return MixToward(_From, _To, _T, GetColorLookup());
+	}
+
+	/**
+	 * Mixing variant that reuses an existing lookup instead of rebuilding one,
+	 * for callers that already hold the map (e.g. {@link #GetCssOverrides}).
+	 *
+	 * @param _From   start color
+	 * @param _To     end color
+	 * @param _T      mix factor; clamped to [0, 1]
+	 * @param _Lookup the palette lookup to resolve both inputs through
+	 * @return the mixed color as {@code #rrggbb}
+	 */
+	private String MixToward(ThemeColor _From, ThemeColor _To, double _T, Map<String, ThemeColor> _Lookup)
+	{
+		int __From = ParseHex(_From.GetHex(_Lookup));
+		int __To = ParseHex(_To.GetHex(_Lookup));
 		// Clamp so callers can't extrapolate past the two endpoints (which would
 		// produce out-of-range channels and malformed CSS).
 		double __T = Math.max(0.0, Math.min(1.0, _T));

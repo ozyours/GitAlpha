@@ -9,7 +9,7 @@ import com.gitalpha.Type.FileChange;
 import com.gitalpha.UI.Components.ACheckBox;
 import com.gitalpha.UI.Components.AListView;
 import com.gitalpha.UI.Components.AText;
-import com.gitalpha.Theme.ETextVariant;
+import com.gitalpha.Type.ETextVariant;
 import com.gitalpha.Theme.ThemeManager;
 import com.gitalpha.UI.IObject;
 import javafx.application.Platform;

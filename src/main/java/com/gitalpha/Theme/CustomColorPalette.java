@@ -1,6 +1,8 @@
 package com.gitalpha.Theme;
 
+import com.gitalpha.Theme.Themes.LightTheme;
 import com.gitalpha.Type.ISerializable;
+import com.gitalpha.Type.ThemeColor;
 import org.json.JSONObject;
 
 /**
@@ -9,9 +11,11 @@ import org.json.JSONObject;
  * <p>
  * Serialization stores the full color set (not just the overrides) so the
  * restored palette is self-contained and does not depend on which base theme
- * it was derived from. A stored palette that predates the custom-theme feature
- * or is missing a key keeps the field default, so a corrupted session file
- * cannot abort the load.
+ * it was derived from. Each slot is stored as its {@link ThemeColor} payload
+ * (RGB floats + brightness + derived flag); the hard-coded slot names never
+ * serialize. A stored palette that predates the custom-theme feature or is
+ * missing a key keeps the field default, so a corrupted session file cannot
+ * abort the load.
  */
 public class CustomColorPalette extends ColorPalette implements ISerializable
 {
@@ -52,7 +56,8 @@ public class CustomColorPalette extends ColorPalette implements ISerializable
 	/**
 	 * Write the full color set (not just the user's overrides) so a restored
 	 * palette is self-contained and independent of the base theme it was seeded
-	 * from (see the class doc).
+	 * from (see the class doc). Each value is the slot's {@link ThemeColor}
+	 * payload; the hard-coded slot names are intentionally absent.
 	 *
 	 * @return the session JSON with one entry per color key
 	 */
@@ -60,17 +65,17 @@ public class CustomColorPalette extends ColorPalette implements ISerializable
 	public JSONObject OnSerialize()
 	{
 		JSONObject __JSON = new JSONObject();
-		__JSON.put(PRIMARY_KEY, GetPrimaryColor());
-		__JSON.put(SECONDARY_KEY, GetSecondaryColor());
-		__JSON.put(TEXT_KEY, GetTextColor());
-		__JSON.put(MUTED_TEXT_KEY, GetMutedTextColor());
-		__JSON.put(ACTIVE_HIGHLIGHT_KEY, GetActiveHighlightColor());
-		__JSON.put(PASSIVE_HIGHLIGHT_KEY, GetPassiveHighlightColor());
-		__JSON.put(BORDER_KEY, GetBorderColor());
-		__JSON.put(BACKGROUND_KEY, GetBackgroundColor());
-		__JSON.put(ADDED_KEY, GetAddedColor());
-		__JSON.put(REMOVED_KEY, GetRemovedColor());
-		__JSON.put(MODIFIED_KEY, GetModifiedColor());
+		__JSON.put(PRIMARY_KEY, GetPrimaryColor().OnSerialize());
+		__JSON.put(SECONDARY_KEY, GetSecondaryColor().OnSerialize());
+		__JSON.put(TEXT_KEY, GetTextColor().OnSerialize());
+		__JSON.put(MUTED_TEXT_KEY, GetMutedTextColor().OnSerialize());
+		__JSON.put(ACTIVE_HIGHLIGHT_KEY, GetActiveHighlightColor().OnSerialize());
+		__JSON.put(PASSIVE_HIGHLIGHT_KEY, GetPassiveHighlightColor().OnSerialize());
+		__JSON.put(BORDER_KEY, GetBorderColor().OnSerialize());
+		__JSON.put(BACKGROUND_KEY, GetBackgroundColor().OnSerialize());
+		__JSON.put(ADDED_KEY, GetAddedColor().OnSerialize());
+		__JSON.put(REMOVED_KEY, GetRemovedColor().OnSerialize());
+		__JSON.put(MODIFIED_KEY, GetModifiedColor().OnSerialize());
 		return __JSON;
 	}
 
@@ -80,10 +85,11 @@ public class CustomColorPalette extends ColorPalette implements ISerializable
 	 * keys — the field default then stands rather than failing the load.
 	 * Sessions saved before the highlight split stored the hover color under
 	 * the legacy {@code Highlight} key; when the new passive key is absent that
-	 * value is migrated into the passive slot rather than dropped. A
-	 * present-but-malformed hex value is rejected by {@link #SafeHex} and also
-	 * keeps the current value, so a corrupted session file cannot abort the
-	 * load or break later rendering.
+	 * value is migrated into the passive slot rather than dropped. Each value
+	 * may be either a legacy {@code #rrggbb} hex string or the newer
+	 * {@link ThemeColor} JSON payload — {@link #ReadColor} type-sniffs and
+	 * falls back to the current value on malformed input, so a corrupted
+	 * session file cannot abort the load or break later rendering.
 	 *
 	 * @param _JSON the session payload for this palette
 	 */
@@ -91,52 +97,67 @@ public class CustomColorPalette extends ColorPalette implements ISerializable
 	public void OnDeserialize(JSONObject _JSON)
 	{
 		if (_JSON.has(PRIMARY_KEY))
-			SetPrimaryColor(SafeHex(_JSON.getString(PRIMARY_KEY), GetPrimaryColor()));
+			SetPrimaryColor(ReadColor(_JSON.get(PRIMARY_KEY), GetPrimaryColor()));
 		if (_JSON.has(SECONDARY_KEY))
-			SetSecondaryColor(SafeHex(_JSON.getString(SECONDARY_KEY), GetSecondaryColor()));
+			SetSecondaryColor(ReadColor(_JSON.get(SECONDARY_KEY), GetSecondaryColor()));
 		if (_JSON.has(TEXT_KEY))
-			SetTextColor(SafeHex(_JSON.getString(TEXT_KEY), GetTextColor()));
+			SetTextColor(ReadColor(_JSON.get(TEXT_KEY), GetTextColor()));
 		if (_JSON.has(MUTED_TEXT_KEY))
-			SetMutedTextColor(SafeHex(_JSON.getString(MUTED_TEXT_KEY), GetMutedTextColor()));
+			SetMutedTextColor(ReadColor(_JSON.get(MUTED_TEXT_KEY), GetMutedTextColor()));
 		if (_JSON.has(ACTIVE_HIGHLIGHT_KEY))
-			SetActiveHighlightColor(SafeHex(_JSON.getString(ACTIVE_HIGHLIGHT_KEY), GetActiveHighlightColor()));
+			SetActiveHighlightColor(ReadColor(_JSON.get(ACTIVE_HIGHLIGHT_KEY), GetActiveHighlightColor()));
 		// Passive highlight: prefer the new key; sessions saved before the
 		// highlight split stored the hover color under the legacy "Highlight"
 		// key, so migrate that value rather than dropping it.
 		if (_JSON.has(PASSIVE_HIGHLIGHT_KEY))
-			SetPassiveHighlightColor(SafeHex(_JSON.getString(PASSIVE_HIGHLIGHT_KEY), GetPassiveHighlightColor()));
+			SetPassiveHighlightColor(ReadColor(_JSON.get(PASSIVE_HIGHLIGHT_KEY), GetPassiveHighlightColor()));
 		else if (_JSON.has(HIGHLIGHT_KEY))
-			SetPassiveHighlightColor(SafeHex(_JSON.getString(HIGHLIGHT_KEY), GetPassiveHighlightColor()));
+			SetPassiveHighlightColor(ReadColor(_JSON.get(HIGHLIGHT_KEY), GetPassiveHighlightColor()));
 		if (_JSON.has(BORDER_KEY))
-			SetBorderColor(SafeHex(_JSON.getString(BORDER_KEY), GetBorderColor()));
+			SetBorderColor(ReadColor(_JSON.get(BORDER_KEY), GetBorderColor()));
 		if (_JSON.has(BACKGROUND_KEY))
-			SetBackgroundColor(SafeHex(_JSON.getString(BACKGROUND_KEY), GetBackgroundColor()));
+			SetBackgroundColor(ReadColor(_JSON.get(BACKGROUND_KEY), GetBackgroundColor()));
 		if (_JSON.has(ADDED_KEY))
-			SetAddedColor(SafeHex(_JSON.getString(ADDED_KEY), GetAddedColor()));
+			SetAddedColor(ReadColor(_JSON.get(ADDED_KEY), GetAddedColor()));
 		if (_JSON.has(REMOVED_KEY))
-			SetRemovedColor(SafeHex(_JSON.getString(REMOVED_KEY), GetRemovedColor()));
+			SetRemovedColor(ReadColor(_JSON.get(REMOVED_KEY), GetRemovedColor()));
 		if (_JSON.has(MODIFIED_KEY))
-			SetModifiedColor(SafeHex(_JSON.getString(MODIFIED_KEY), GetModifiedColor()));
+			SetModifiedColor(ReadColor(_JSON.get(MODIFIED_KEY), GetModifiedColor()));
 	}
 
 	/**
-	 * Validate a hex color read from the session file, falling back to the
-	 * current field value when the payload is malformed.
+	 * Read one color slot from the session payload, accepting both the legacy
+	 * {@code #rrggbb} hex-string form and the newer {@link ThemeColor} JSON
+	 * payload. The fallback's hard-coded name is preserved in both cases (the
+	 * legacy form is parsed into a direct color with that name at full
+	 * brightness — legacy files predate the brightness multiplier, so any
+	 * fallback brightness is intentionally dropped; the JSON form is applied
+	 * onto a copy of the fallback). Malformed input keeps the fallback, so a
+	 * corrupted session file cannot abort the load.
 	 *
-	 * @param _Value    the raw hex string from the session file
-	 * @param _Fallback the value to keep when _Value is not a valid {@code #rrggbb}
-	 * @return _Value if valid, otherwise _Fallback
+	 * @param _Value    the raw payload from the session file
+	 * @param _Fallback the current slot value to keep when _Value is unusable
+	 * @return the restored color
 	 */
-	private static String SafeHex(String _Value, String _Fallback)
+	private static ThemeColor ReadColor(Object _Value, ThemeColor _Fallback)
 	{
-		try
+		if (_Value instanceof String __Hex)
 		{
-			ColorPalette.ParseHex(_Value);
-			return _Value;
+			try
+			{
+				return ThemeColor.FromHex(_Fallback.GetName(), __Hex);
+			}
+			catch (IllegalArgumentException __BadHex)
+			{
+				return _Fallback;
+			}
 		}
-		catch (IllegalArgumentException __BadHex)
+		if (_Value instanceof JSONObject __JSON)
 		{
-			return _Fallback;
+			ThemeColor __Color = _Fallback.Copy();
+			__Color.OnDeserialize(__JSON);
+			return __Color;
 		}
+		return _Fallback;
 	}
 }

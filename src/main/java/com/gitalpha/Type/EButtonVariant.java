@@ -1,4 +1,8 @@
-package com.gitalpha.Theme;
+package com.gitalpha.Type;
+
+import com.gitalpha.Theme.ColorPalette;
+
+import java.util.Map;
 
 /**
  * Visual variants for themed buttons. Each variant maps the button skin's six
@@ -22,7 +26,9 @@ public enum EButtonVariant
 	/**
 	 * Resolve the six skin color placeholders from the given palette, in the
 	 * order the button CSS template expects them: background, text, border,
-	 * hover background, pressed background, focus border.
+	 * hover background, pressed background, focus border. Palette slots are
+	 * resolved to hex through the palette's lookup, so derived slots render by
+	 * their resolved color.
 	 *
 	 * @param _Palette the active palette to read colors from
 	 * @return the six colors as CSS strings ({@code #rrggbb} hex, or
@@ -30,17 +36,26 @@ public enum EButtonVariant
 	 */
 	public String[] ResolveSkinColors(ColorPalette _Palette)
 	{
+		Map<String, ThemeColor> __Lookup = _Palette.GetColorLookup();
 		return switch (this)
 		{
-case NORMAL -> new String[] {
-				_Palette.GetSecondaryColor(), _Palette.GetTextColor(), _Palette.GetBorderColor(),
-				_Palette.GetPassiveHighlightColor(), _Palette.GetBorderColor(), _Palette.GetPrimaryColor() };
+			case NORMAL -> new String[] {
+					_Palette.GetSecondaryColor().GetHex(__Lookup),
+					_Palette.GetTextColor().GetHex(__Lookup),
+					_Palette.GetBorderColor().GetHex(__Lookup),
+					_Palette.GetPassiveHighlightColor().GetHex(__Lookup),
+					_Palette.GetBorderColor().GetHex(__Lookup),
+					_Palette.GetPrimaryColor().GetHex(__Lookup) };
 			case DANGER -> new String[] {
-					_Palette.GetRemovedColor(), "#ffffff", _Palette.GetRemovedColor(),
-					_Palette.GetRemovedIntra(), _Palette.GetRemovedBackground(), _Palette.GetRemovedColor() };
+					_Palette.GetRemovedColor().GetHex(__Lookup), "#ffffff",
+					_Palette.GetRemovedColor().GetHex(__Lookup),
+					_Palette.GetRemovedIntra(), _Palette.GetRemovedBackground(),
+					_Palette.GetRemovedColor().GetHex(__Lookup) };
 			case GHOST -> new String[] {
-					"transparent", _Palette.GetTextColor(), "transparent",
-					_Palette.GetPassiveHighlightColor(), _Palette.GetBorderColor(), _Palette.GetPrimaryColor() };
+					"transparent", _Palette.GetTextColor().GetHex(__Lookup), "transparent",
+					_Palette.GetPassiveHighlightColor().GetHex(__Lookup),
+					_Palette.GetBorderColor().GetHex(__Lookup),
+					_Palette.GetPrimaryColor().GetHex(__Lookup) };
 		};
 	}
 }

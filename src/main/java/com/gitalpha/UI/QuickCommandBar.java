@@ -23,13 +23,8 @@ public class QuickCommandBar extends HBox
 		// margin separates it from the menu bar above, and a bottom margin
 		// spaces the chrome from the tab pane below (the chrome VBox has no
 		// padding of its own).
-		VBox.setMargin(this, new Insets(8, 0, 8, 0));
-		getChildren().addAll(
-				PlaceholderButton("Fetch"),
-				PlaceholderButton("Pull"),
-				PlaceholderButton("Push"),
-				PlaceholderButton("Stash"),
-				PlaceholderButton("Tags"));
+		VBox.setMargin(this, new Insets(8));
+		getChildren().addAll(PlaceholderButton("Fetch"), PlaceholderButton("Pull"), PlaceholderButton("Push"), PlaceholderButton("Stash"), PlaceholderButton("Tags"));
 	}
 
 	/**
