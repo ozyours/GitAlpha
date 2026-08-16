@@ -113,13 +113,17 @@ Items that were discussed and have been committed to `master`.
       widgets migrated, all dialogs themed via `ApplyThemeToDialog`, both scenes registered via
       `RegisterScene`, compact `[A]/[M]/[R]` + `[A]/[D]/[M]` status codes, list-cell hover/selected
       rules mirroring Modena's virtual-flow path (`071a8d4`)
-
-### Implemented, awaiting commit
-
-- [ ] **ThemeColor typed color model** — `ThemeColor` (Theme package): sRGB float RGB + brightness
-      multiplier (0-1), direct/derived forms with hard-coded slot names, `Resolve(Map)` with cycle
-      guard, `GetHex(Map)` rendering `#rrggbb`, `ISerializable` storing only
-      R/G/B/Brightness/IsDerived (names stay code-side); staged, not yet committed
+- [x] **Palette migration to ThemeColor** — `ColorPalette` slots become `ThemeColor` values (sRGB
+      float RGB + brightness, direct/derived forms with hard-coded slot names, cycle-guarded
+      `Resolve(Map)`, `GetHex(Map)` rendering `#rrggbb`, `ISerializable` storing only
+      R/G/B/Brightness/IsDerived); `CustomColorPalette` type-sniffs legacy hex strings vs ThemeColor
+      JSON on load (`ReadColor`); `ThemeManager` bake sites read `GetHex()`; `ParseHex` moved into
+      `ThemeColor` (`ParseHexToFloats`); `EButtonVariant` pressed slots map to palette colors
+      (`MixToward` stayed in `ColorPalette`, now taking `ThemeColor` args); per-element skins
+      extracted into `Theme/Skin` (`ThemeSkin` base + `ButtonSkin`/`ListViewSkin`/`ScrollBarSkin`/
+      `CheckBoxSkin`/`ComboBoxSkin`/`DialogSkin`/`TextInputSkin`/`TabPaneSkin`/`BaseSkin`),
+      `LightTheme`/`DarkTheme` moved to `Theme/Themes`, `EButtonVariant`/`ETextVariant` moved to the
+      `Type` package (`318fc7d`)
 
 ---
 
@@ -260,12 +264,6 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 
 ### Theming
 
-- [ ] **Palette migration to ThemeColor** — `ColorPalette` still stores the 11 base colors as hex
-      strings; the new `ThemeColor` (implemented, awaiting commit) is not wired in. Done =
-      `ColorPalette` fields become `ThemeColor` slots, `CustomColorPalette` type-sniffs legacy hex
-      strings vs ThemeColor JSON on load, `ThemeManager` bake sites read `GetHex()`,
-      `MixToward`/`ParseHex` move into `ThemeColor`, and `EButtonVariant` pressed slots become
-      derived colors
 - [ ] **Pressed-state feedback** — the `AButton` pressed slot maps to the border color (nearly
       invisible in light theme) and the dialog default OK button has no `:default:pressed` rule
       (`:default:hover` overrides `:pressed`), so clicks show little feedback. Done = pressed
