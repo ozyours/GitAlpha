@@ -29,6 +29,7 @@ public class CustomColorPalette extends ColorPalette implements ISerializable
 	private static final String HIGHLIGHT_KEY = "Highlight";
 	private static final String BORDER_KEY = "Border";
 	private static final String BACKGROUND_KEY = "Background";
+	private static final String BACKGROUND_2_KEY = "Background2";
 	private static final String ADDED_KEY = "Added";
 	private static final String REMOVED_KEY = "Removed";
 	private static final String MODIFIED_KEY = "Modified";
@@ -73,6 +74,7 @@ public class CustomColorPalette extends ColorPalette implements ISerializable
 		__JSON.put(PASSIVE_HIGHLIGHT_KEY, GetPassiveHighlightColor().OnSerialize());
 		__JSON.put(BORDER_KEY, GetBorderColor().OnSerialize());
 		__JSON.put(BACKGROUND_KEY, GetBackgroundColor().OnSerialize());
+		__JSON.put(BACKGROUND_2_KEY, GetBackground2Color().OnSerialize());
 		__JSON.put(ADDED_KEY, GetAddedColor().OnSerialize());
 		__JSON.put(REMOVED_KEY, GetRemovedColor().OnSerialize());
 		__JSON.put(MODIFIED_KEY, GetModifiedColor().OnSerialize());
@@ -116,7 +118,9 @@ public class CustomColorPalette extends ColorPalette implements ISerializable
 		if (_JSON.has(BORDER_KEY))
 			SetBorderColor(ReadColor(_JSON.get(BORDER_KEY), GetBorderColor()));
 		if (_JSON.has(BACKGROUND_KEY))
-			SetBackgroundColor(ReadColor(_JSON.get(BACKGROUND_KEY), GetBackgroundColor()));
+			SetBackground1Color(ReadColor(_JSON.get(BACKGROUND_KEY), GetBackgroundColor()));
+		if (_JSON.has(BACKGROUND_2_KEY))
+			SetBackground2Color(ReadColor(_JSON.get(BACKGROUND_2_KEY), GetBackground2Color()));
 		if (_JSON.has(ADDED_KEY))
 			SetAddedColor(ReadColor(_JSON.get(ADDED_KEY), GetAddedColor()));
 		if (_JSON.has(REMOVED_KEY))

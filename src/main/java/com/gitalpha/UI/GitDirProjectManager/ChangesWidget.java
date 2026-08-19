@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * One row in the ChangesWidget list: a file entry (checkbox + status + path)
@@ -177,6 +178,14 @@ public class ChangesWidget extends BaseWidget
 
 	private final AListView<ChangeEntryWidget> ChangesListView;
 
+	/**
+	 * Checkboxes disabled by an in-flight batched stage/unstage (see
+	 * {@link #ToggleStagedState}). They are re-enabled once the operation's
+	 * refresh rebuilds the list via {@link #UpdateChanges()}, or by the failure
+	 * path of {@link #ToggleStagedState} when no refresh will ever run.
+	 */
+	private final Set<CheckBox> PendingReenableCheckBoxes = new HashSet<>();
+
 	/** Persistent header widgets — reused across refreshes so a highlighted header keeps its highlight */
 	private final ChangeEntryWidget StagedHeader = new ChangeEntryWidget("Staged");
 	private final ChangeEntryWidget UnstagedHeader = new ChangeEntryWidget("Unstaged");
@@ -258,6 +267,11 @@ public class ChangesWidget extends BaseWidget
 	 * current selection and the diff viewer survive a refresh), each section is
 	 * re-sorted by path normalized to '/' to mirror git's ordering, and the new order
 	 * is applied in place by relocating entries rather than duplicating them.
+	 * <p>
+	 * This method also re-enables every checkbox that a completed stage/unstage
+	 * batch disabled (see {@link #ToggleStagedState}): a successful operation's
+	 * refresh is what lands here, so the disabled boxes are flipped back together
+	 * with the rebuilt list.
 	 */
 	public void UpdateChanges()
 	{
@@ -328,6 +342,14 @@ public class ChangesWidget extends BaseWidget
 		// Ensure the virtual flow re-lays out after the in-place mutation so the
 		// scrollbar range (exact thanks to setFixedCellSize) covers the last entry.
 		ChangesListView.requestLayout();
+
+		// Re-enable every checkbox disabled by a completed stage/unstage batch.
+		// A success path runs the refresh that lands here, so this is the single
+		// re-enable point for successful operations; the failure path handles it
+		// inside ToggleStagedState because no refresh ever runs after a failure.
+		for (CheckBox __Box : PendingReenableCheckBoxes)
+			__Box.setDisable(false);
+		PendingReenableCheckBoxes.clear();
 	}
 
 	/**
@@ -398,8 +420,9 @@ public class ChangesWidget extends BaseWidget
 	 * (single-row fallback). Each target path is passed with the {@code :(literal)}
 	 * pathspec prefix so filenames containing glob/magic characters are matched
 	 * literally, not as patterns. All affected checkboxes are disabled while the
-	 * command runs and re-enabled on completion — success and failure alike; on
-	 * failure their selection is reverted and an error dialog shown.
+	 * command runs and re-enabled on completion — on success by the follow-up
+	 * refresh reaching {@link #UpdateChanges()}, on failure right here in the
+	 * callback; on failure their selection is reverted and an error dialog shown.
 	 *
 	 * @param _Change          the file change to move between scopes
 	 * @param _ShouldBeStaged  true to stage, false to unstage
@@ -458,7 +481,8 @@ public class ChangesWidget extends BaseWidget
 
 		// Sync every target checkbox to the toggled state and disable them all so
 		// the batched op can't be double-submitted; the user sees the whole
-		// selection flip together.
+		// selection flip together. The boxes are tracked so UpdateChanges can
+		// re-enable them once the follow-up refresh rebuilds the list.
 		List<CheckBox> __CheckBoxes = new ArrayList<>();
 		for (ChangeEntryWidget __Target : __Targets)
 		{
@@ -467,20 +491,21 @@ public class ChangesWidget extends BaseWidget
 			__Box.setSelected(_ShouldBeStaged);
 			__Box.setDisable(true);
 		}
+		PendingReenableCheckBoxes.addAll(__CheckBoxes);
 
 		GetGitDirTarget().GetOperator().RunGitOp(__Cmd, ERefreshPolicy.REFRESH_AND_UPDATE_UI, (__Ok, __Err, __Dir) ->
 		{
 			Platform.runLater(() ->
 			{
-				// Re-enable every synced checkbox. On success this matters for
-				// rows whose scope did not change (e.g. a file already staged in
-				// a mixed batch) and thus survived the refresh; on failure it is
-				// the pre-revert step.
-				for (CheckBox __Box : __CheckBoxes)
-					__Box.setDisable(false);
-
 				if (!__Ok)
 				{
+					// Failure: no refresh runs, so UpdateChanges never executes
+					// and the boxes must be re-enabled (and their selection
+					// reverted) right here, before the error dialog is shown.
+					for (CheckBox __Box : __CheckBoxes)
+						__Box.setDisable(false);
+					PendingReenableCheckBoxes.removeAll(__CheckBoxes);
+
 					// Revert every synced checkbox.
 					for (CheckBox __Box : __CheckBoxes)
 						__Box.setSelected(!_ShouldBeStaged);
@@ -492,6 +517,10 @@ public class ChangesWidget extends BaseWidget
 					__Alert.setContentText(__Err);
 					__Alert.showAndWait();
 				}
+				// Success: the boxes stay disabled until the operation's refresh
+				// reaches UpdateChanges, which re-enables them along with the
+				// rebuilt list (see UpdateChanges). This guarantees the toggle
+				// can't be double-submitted while the command is still in flight.
 			});
 		});
 	}

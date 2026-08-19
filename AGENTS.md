@@ -36,14 +36,17 @@ AlphaEngine (singleton: AlphaEngine.Instance — never construct a second)
   ├─ AlphaSettings: GitPath ("git.exe"), RecentSize (8), TabMaxSize (150)
   ├─ GitDirContainer OpenGitDirList / RecentGitDirContainer RecentGitDirList (recent list capped + deduped)
   ├─ Session: ~/.gitalpha/session.json — SHA-256 hash skips redundant writes;
-  │    stores open/recent repos + window bounds; invalid repos sanitized on load
+  │    stores open/recent repos + window bounds + shared StashWindowState + shared
+  │    left-pane width (plain scalar "LeftPaneWidth"); invalid repos sanitized on load
   └─ Event lists (WeakReference, pruned on dead refs):
        IOpenGitDirEvent / ICloseGitDirEvent / IRefreshGitDirEvent   (com.gitalpha.Engine.GitDirContainer)
 
 AlphaUI (BorderPane) → top: TopMenuBar + QuickCommandBar (placeholder entries except Git → Stash…, see ROADMAP.md; shared "not implemented" notice: PlaceholderNotice); center: TabPane (trailing "+" tab creates new tabs)
   ├─ GitDirTabButton (extends Tab, implements IObject) → ProjectBrowser (path field + recent repo list)
-  └─ OpenProject(gitDir) → GitDirWidget (StackPane) — content is an outer two-column grid:
-     │   left (fixed 500px) = sub-TabPane: "Changes" tab = working-tree GridPane,
+  └─ OpenProject(gitDir) → GitDirWidget (StackPane) — content is an outer split pane:
+     │   left = sub-TabPane (user-resizable; width persisted globally as a plain
+     │          scalar in the session file via AlphaEngine):
+     │       "Changes" tab = working-tree GridPane,
      │       "History" tab = TreeViewWidget placeholder (commit-graph DAG);
      │   right = ONE shared TextViewerWidget diff viewer for both tabs
      │   the commit row is pinned (min == pref) so the changes row stays the only grower
@@ -79,21 +82,21 @@ GitDir (per repo, ISerializable) — data holder only
 
 ### Left-pane layout (GitDirWidget is the layout authority)
 
-- `GitDirWidget` owns all left-pane sizing as `RowConstraints`/`ColumnConstraints` — per-widget size constants were removed (sizing is **not** set inside `BranchWidget`/`ChangesWidget`/`CommitWidget`)
-- `LEFT_PANE_WIDTH = 500` (fixed); the shared `TextViewerWidget` diff viewer fills the rest and serves both sub-tabs
+- `GitDirWidget` owns all left-pane sizing as `RowConstraints` — per-widget size constants were removed (sizing is **not** set inside `BranchWidget`/`ChangesWidget`/`CommitWidget`)
+- The outer split is an `ASplitPane` (themed divider = the vertical border): the left sub-tab pane is **user-resizable** and its pixel width is persisted **globally** in the session file via a plain `AlphaEngine` scalar (ONE width for every repository, key `"LeftPaneWidth"`, default 500 — no wrapper object, same pattern as the window-bounds keys). The divider position is a fraction, so the saved pixels are applied as `width / paneWidth` only after the pane is laid out (setting it before sizing lets `SplitPaneSkin` redistribute the divider — JDK-8092863); dragging the divider writes `fraction × paneWidth` back to the shared scalar. Floor widths: left pane `LEFT_PANE_MIN_WIDTH = 250`, diff viewer `RIGHT_PANE_MIN_WIDTH = 200`
 - Row policy: branch row pinned `min == max = 140` (never grows); changes row `min 240 + vgrow ALWAYS` (the **only** growable row); commit row pinned `min == pref == COMMIT_ROW_PREF_HEIGHT = 240` (no vgrow) so it sticks to the bottom and never compresses when the sub-tab header takes vertical space
 - Resizing the window only stretches the changes row; branch + commit heights are fixed
 
 ## Theming (Theme package + UI/Components)
 
 - **Two-tier application** — `ThemeManager.Instance` (singleton, mirrors `AlphaEngine.Instance`) owns the active `ColorPalette`:
-  - *Scene tier*: `RegisterScene(Scene)` attaches the scene base stylesheet — the `.root` focus-ring kill + the palette's `-gitalpha-*` CSS variables (`GetCssOverrides`) — re-applied on every palette change
+  - *Scene tier*: `RegisterScene(Scene)` attaches the scene base stylesheet — the `.root` focus-ring kill + window backdrop (`-gitalpha-background-2`) + the palette's `-gitalpha-*` CSS variables (`GetCssOverrides`) — re-applied on every palette change
   - *Widget tier*: themed controls bake their own inline data-URI skins from the palette and re-bake on palette switches via `IThemeChangeEvent` (WeakReference list, pruned on broadcast, fired on the FX thread)
   - `SetActivePalette(palette)` replaces the palette, re-applies to all registered scenes, then broadcasts; `ApplyThemeToDialog(dialog)` themes a dialog pane (registers its scene + bakes the dialog skin)
-- **Palette** — `ColorPalette` (abstract): 11 base colors as `ThemeColor` values (sRGB float RGB + brightness multiplier, direct or derived form; see the ThemeColor bullet below); diff shades (`GetAddedBackground()` etc.) are derived via `MixToward(base, background, t)` so the same base tints correctly in light and dark. The concrete themes `LightTheme`/`DarkTheme` live in the `Theme/Themes` subpackage and populate the slots with sRGB float literals; `CustomColorPalette` (ISerializable, stays in the Theme package) persists the full set in the session file with legacy `Highlight`-key migration and legacy hex-string/ThemeColor-JSON type-sniffing (`ReadColor`)
+- **Palette** — `ColorPalette` (abstract): 12 base colors as `ThemeColor` values (sRGB float RGB + brightness multiplier, direct or derived form; see the ThemeColor bullet below); diff shades (`GetAddedBackground()` etc.) are derived via `MixToward(base, background, t)` so the same base tints correctly in light and dark. Two background slots: `BackgroundColor` (content/panel level) and `Background2Color` (window-level backdrop — the scene `.root` background is `-gitalpha-background-2`). The concrete themes `LightTheme`/`DarkTheme` live in the `Theme/Themes` subpackage and populate the slots with sRGB float literals; `CustomColorPalette` (ISerializable, stays in the Theme package) persists the full set in the session file with legacy `Highlight`-key migration and legacy hex-string/ThemeColor-JSON type-sniffing (`ReadColor`)
 - **Highlight split** — active highlight = *selected* states (list/combo selection, checked fill, text selection), passive highlight = *hover* states (buttons, checkbox, combo popup, list hover); primary (accent) stays for focus rings, the dialog default OK button and `ETextVariant.ACCENT`
-- **Components** (`UI/Components`) — `AButton`, `ACheckBox`, `AComboBox`, `AListView`, `AScrollBar`, `ATabPane`, `AText`, `ATextField`, `ATextArea`: thin subclasses of the JavaFX controls that add a style class, apply the skin from `ThemeManager` and implement `IThemeChangeEvent` to re-bake on palette switches. `EButtonVariant` (NORMAL/DANGER/GHOST, Type package) maps the button skin's six color slots to palette colors; `ETextVariant` (Type package) resolves complete inline CSS strings for `AText`
-- **Skin baking** — abstract `ThemeSkin` base (in the `Theme/Skin` subpackage): each element is one subclass (`ButtonSkin`, `ListViewSkin`, `ScrollBarSkin`, `CheckBoxSkin`, `ComboBoxSkin`, `DialogSkin`, `TextInputSkin`, `TabPaneSkin`) defining its CSS format (`GetCssFormat`) + palette argument resolution (`GetColorArguments`); the base's concrete `Bake(palette)` fills the format and encodes a `data:text/css;base64,...` URL — the URL changes when colors change so JavaFX re-parses. `BaseSkin` is the exception (scene-level composition of the focus-ring kill + palette variables + combo popup, overrides `Bake`). Node-level skins inline the hex values (scene variables don't resolve on node stylesheets); only scene-level CSS (the combo popup) uses `-gitalpha-*` lookups
+- **Components** (`UI/Components`) — `AButton`, `ACheckBox`, `AComboBox`, `AListView`, `AScrollBar`, `ASplitPane`, `ATabPane`, `AText`, `ATextField`, `ATextArea`, `ATopMenuBar`: thin subclasses of the JavaFX controls that add a style class, apply the skin from `ThemeManager` and implement `IThemeChangeEvent` to re-bake on palette switches. `EButtonVariant` (NORMAL/DANGER/GHOST, Type package) maps the button skin's six color slots to palette colors; `ETextVariant` (Type package) resolves complete inline CSS strings for `AText`
+- **Skin baking** — abstract `ThemeSkin` base (in the `Theme/Skin` subpackage): each element is one subclass (`ButtonSkin`, `ListViewSkin`, `ScrollBarSkin`, `CheckBoxSkin`, `ComboBoxSkin`, `DialogSkin`, `TextInputSkin`, `TabPaneSkin`, `MenuBarSkin`, `SplitPaneSkin`) defining its CSS format (`GetCssFormat`) + palette argument resolution (`GetColorArguments`); the base's concrete `Bake(palette)` fills the format and encodes a `data:text/css;base64,...` URL — the URL changes when colors change so JavaFX re-parses. `BaseSkin` is the exception (scene-level composition of the focus-ring kill + palette variables + combo-box and context-menu popups, overrides `Bake`). Node-level skins inline the hex values (scene variables don't resolve on node stylesheets); only scene-level CSS (the popups) uses `-gitalpha-*` lookups
 - **ThemeColor** (`com.gitalpha.Type`, alongside the variant enums `EButtonVariant`/`ETextVariant`) — typed color model replacing raw hex: sRGB float RGB + brightness multiplier (0-1), direct or derived form (`IsDerived` + hard-coded `SourceName`), `Resolve(Map)` follows derivation chains with a cycle guard, `GetHex(Map)` renders `#rrggbb`; `ISerializable` stores only R/G/B/Brightness/IsDerived (names are code-side, never serialized)
 
 ## Git operations & refresh (GitOperator)

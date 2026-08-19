@@ -10,6 +10,7 @@ import com.gitalpha.UI.Components.AButton;
 import com.gitalpha.UI.Components.ACheckBox;
 import com.gitalpha.UI.Components.AComboBox;
 import com.gitalpha.UI.Components.AListView;
+import com.gitalpha.UI.Components.ASplitPane;
 import com.gitalpha.UI.GitDirProjectManager.ImmutableChangesWidget;
 import com.gitalpha.UI.GitDirProjectManager.TextViewerWidget;
 import com.gitalpha.UI.IObject;
@@ -74,9 +75,11 @@ public class StashWidget extends Stage implements IObject
 	 */
 	private final TextViewerWidget DiffViewer;
 	/**
-	 * Three-column split pane; divider positions are persisted as the column sizes
+	 * Three-column split pane; divider positions are persisted as the column sizes.
+	 * Uses the themed {@link ASplitPane} so its flat divider matches the project
+	 * widget's splitter instead of the stock Modena bar.
 	 */
-	private final SplitPane SplitPaneInstance;
+	private final ASplitPane SplitPaneInstance;
 	/**
 	 * Retained window state, shared across all repositories: every stash window
 	 * restores from and writes back to the same engine-held state, so the last
@@ -207,7 +210,7 @@ public class StashWidget extends Stage implements IObject
 		bottomBar.setPadding(new Insets(8));
 
 		// --- Main layout ---
-		SplitPaneInstance = new SplitPane(leftPane, centrePane, rightPane);
+		SplitPaneInstance = new ASplitPane(leftPane, centrePane, rightPane);
 		// Initial divider positions — keep in sync with StashWindowState's
 		// Column1/Column2 defaults, which stand in when no saved state exists.
 		SplitPaneInstance.setDividerPositions(0.25, 0.60);

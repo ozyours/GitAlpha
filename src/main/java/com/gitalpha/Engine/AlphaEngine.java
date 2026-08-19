@@ -17,8 +17,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Application-wide engine singleton: owns the open/recent repository lists,
+ * the shared session state (window bounds, Stash-window state, shared
+ * left-pane width) and the weak event lists that notify the UI of repository
+ * open/close and refresh. The session file (~/.gitalpha/session.json) is
+ * written on
+ * {@link #SaveSession()} and restored on {@link #LoadSession()}; a SHA-256
+ * hash of the serialized root skips redundant writes.
+ * <p>
+ * Never construct a second instance — always use {@link #Instance}.
+ */
 public class AlphaEngine
 {
+	/** The single engine instance; the whole app reaches shared state through this. */
 	public static AlphaEngine Instance = new AlphaEngine();
 
 	public AlphaEngine()
@@ -37,26 +49,34 @@ public class AlphaEngine
 	private final RecentGitDirContainer RecentGitDirList = new RecentGitDirContainer(this);
 	private final GitDirContainer OpenGitDirList = new GitDirContainer(this);
 
+	/** @return the app settings (git path, recent/tab size limits) */
 	public final AlphaSettings GetSettings()
 	{
 		return Settings;
 	}
 
+	/** @return the capped + deduped list of recently opened repositories */
 	public final RecentGitDirContainer GetRecentGitDirList()
 	{
 		return RecentGitDirList;
 	}
 
+	/** @return the list of currently open repositories */
 	public final GitDirContainer GetOpenGitDirList()
 	{
 		return OpenGitDirList;
 	}
 
+	/** Weak event listeners notified when a repository is opened (pruned on dead refs) */
 	private final List<WeakReference<IOpenGitDirEvent>> OpenGitDirEventList = new ArrayList<>();
 
+	/** Weak event listeners notified when a repository is closed (pruned on dead refs) */
 	private final List<WeakReference<ICloseGitDirEvent>> CloseGitDirEventList = new ArrayList<>();
+	/** Weak event listeners notified when a repository refreshes (pruned on dead refs) */
 	private final List<WeakReference<IRefreshGitDirEvent>> RefreshGitDirEventList = new ArrayList<>();
+	/** Session file location: ~/.gitalpha/session.json */
 	private final Path SessionFilePath = Path.of(System.getProperty("user.home"), ".gitalpha", "session.json");
+	/** SHA-256 of the last written session root; equal hashes skip redundant writes */
 	private String LastSessionRootHash = "";
 
 	/**
@@ -66,18 +86,43 @@ public class AlphaEngine
 	 */
 	private StashWindowState SharedStashWindowState = null;
 
+	/** Session-file JSON key under which the shared Stash-window state is stored */
 	private static final String STASH_WINDOW_STATE_KEY = "StashWindowState";
 
+	/** @return the shared Stash-window state, or null if no stash window has been persisted yet */
 	public StashWindowState GetStashWindowState()
 	{
 		return SharedStashWindowState;
 	}
 
+	/** @param _State the shared Stash-window state to persist (null is ignored) */
 	public void SetStashWindowState(StashWindowState _State)
 	{
 		if (_State == null)
 			return;
 		SharedStashWindowState = _State;
+	}
+
+	/**
+	 * Shared left-pane width (px) of the project widget: one width used by
+	 * every open repository's GitDirWidget, not per repository. The last
+	 * widget to drag the divider wins.
+	 */
+	private double SharedLeftPaneWidth = 500;
+
+	/** Session-file JSON key under which the shared left-pane width is stored */
+	private static final String LEFT_PANE_WIDTH_KEY = "LeftPaneWidth";
+
+	/** @return the shared project-widget left-pane width in pixels (default 500) */
+	public double GetSharedLeftPaneWidth()
+	{
+		return SharedLeftPaneWidth;
+	}
+
+	/** @param _Width the shared project-widget left-pane width in pixels to persist */
+	public void SetSharedLeftPaneWidth(double _Width)
+	{
+		SharedLeftPaneWidth = _Width;
 	}
 
 	/** Persisted window bounds; -1,-1 means "use platform default position" */
@@ -87,6 +132,7 @@ public class AlphaEngine
 	private int WindowHeight = 600;
 	private boolean WindowMaximized = false;
 
+	/** Session-file JSON keys for the persisted main-window bounds */
 	private static final String WINDOW_X_KEY = "WindowX";
 	private static final String WINDOW_Y_KEY = "WindowY";
 	private static final String WINDOW_WIDTH_KEY = "WindowWidth";
@@ -99,6 +145,7 @@ public class AlphaEngine
 	public int GetWindowHeight() { return WindowHeight; }
 	public boolean GetWindowMaximized() { return WindowMaximized; }
 
+	/** @param _X/_Y/_Width/_Height the main-window bounds to persist (X/Y -1 = platform default) */
 	public void SetWindowBounds(int _X, int _Y, int _Width, int _Height)
 	{
 		WindowX = _X;
@@ -107,11 +154,20 @@ public class AlphaEngine
 		WindowHeight = _Height;
 	}
 
+	/** @param _Maximized whether the main window was last shown maximized */
 	public void SetWindowMaximized(boolean _Maximized)
 	{
 		WindowMaximized = _Maximized;
 	}
 
+	/**
+	 * Opens a repository: validates the path, reuses an already-open GitDir if
+	 * present, otherwise creates one, adds it to the open + recent lists and
+	 * broadcasts the open event.
+	 *
+	 * @param _ProjectPath the repository path (any path inside the repo works)
+	 * @return the GitDir for the repository, or null if the path is invalid
+	 */
 	public GitDir TryOpenGitDir(Path _ProjectPath)
 	{
 		if (_ProjectPath == null)
@@ -132,6 +188,12 @@ public class AlphaEngine
 		return _Probe;
 	}
 
+	/**
+	 * Closes a repository: removes it from the open list and broadcasts the
+	 * close event. No-op if the path is not currently open.
+	 *
+	 * @param _ProjectPath the repository path to close
+	 */
 	public void TryCloseGitDir(Path _ProjectPath)
 	{
 		if (_ProjectPath == null)
@@ -147,11 +209,19 @@ public class AlphaEngine
 		}
 	}
 
+	/** @return an immutable snapshot of the currently open repositories */
 	public List<GitDir> GetOpenGitDirs()
 	{
 		return List.copyOf(OpenGitDirList.GetGitDirs());
 	}
 
+	/**
+	 * Serializes the whole session (open/recent repos, window bounds, shared
+	 * Stash-window state and shared left-pane width) to ~/.gitalpha/session.json.
+	 * Skipped entirely when the serialized root hashes to the last written
+	 * value, so repeated calls (focus in/out, tab switches) don't touch the
+	 * disk unless something actually changed.
+	 */
 	public synchronized void SaveSession()
 	{
 		try
@@ -169,6 +239,8 @@ public class AlphaEngine
 			__Root.put(WINDOW_MAXIMIZED_KEY, WindowMaximized);
 			if (SharedStashWindowState != null)
 				__Root.put(STASH_WINDOW_STATE_KEY, SharedStashWindowState.OnSerialize());
+			// The left-pane width is a plain scalar, written directly (no wrapper object).
+			__Root.put(LEFT_PANE_WIDTH_KEY, SharedLeftPaneWidth);
 			String __RootString = __Root.toString(2);
 			String __NewHash = ComputeSessionHash(__RootString);
 
@@ -185,6 +257,12 @@ public class AlphaEngine
 		}
 	}
 
+	/**
+	 * Restores the session from ~/.gitalpha/session.json: open/recent repos
+	 * (invalid ones sanitized out), window bounds, the shared Stash-window
+	 * state and the shared left-pane width. No-op when the file is missing or
+	 * blank.
+	 */
 	public synchronized void LoadSession()
 	{
 		if (!Files.exists(SessionFilePath))
@@ -232,6 +310,11 @@ public class AlphaEngine
 				SharedStashWindowState = new StashWindowState();
 				SharedStashWindowState.OnDeserialize(__Root.getJSONObject(STASH_WINDOW_STATE_KEY));
 			}
+
+			// Restore the shared left-pane width (a single scalar for all
+			// repositories, applied to every project widget).
+			if (__Root.has(LEFT_PANE_WIDTH_KEY))
+				SharedLeftPaneWidth = __Root.getDouble(LEFT_PANE_WIDTH_KEY);
 		}
 		catch (Exception __Ex)
 		{
@@ -239,6 +322,7 @@ public class AlphaEngine
 		}
 	}
 
+	/** Drops repositories whose path is null or no longer a valid git dir (stale session entries) */
 	private void SanitizeGitDirContainer(GitDirContainer _Container)
 	{
 		if (_Container == null)
@@ -264,6 +348,7 @@ public class AlphaEngine
 		}
 	}
 
+	/** @return the index of the open GitDir matching the path, or -1 if not open */
 	private int FindOpenGitDirIndexByPath(Path _SearchPath)
 	{
 		if (_SearchPath == null)
@@ -283,11 +368,13 @@ public class AlphaEngine
 		return -1;
 	}
 
+	/** Registers an open-event listener (held weakly; no unsubscribe required) */
 	public void AddIOpenGitDirEvent(IOpenGitDirEvent _Event)
 	{
 		OpenGitDirEventList.add(new WeakReference<>(_Event));
 	}
 
+	/** Unregisters an open-event listener (optional — dead references are pruned on broadcast) */
 	public void RemoveIOpenGitDirEvent(IOpenGitDirEvent _Event)
 	{
 		int i = 0;
@@ -302,11 +389,13 @@ public class AlphaEngine
 		}
 	}
 
+	/** Registers a close-event listener (held weakly; no unsubscribe required) */
 	public void AddICloseGitDirEvent(ICloseGitDirEvent _Event)
 	{
 		CloseGitDirEventList.add(new WeakReference<>(_Event));
 	}
 
+	/** Unregisters a close-event listener (optional — dead references are pruned on broadcast) */
 	public void RemoveICloseGitDirEvent(ICloseGitDirEvent _Event)
 	{
 		int i = 0;
@@ -321,11 +410,13 @@ public class AlphaEngine
 		}
 	}
 
+	/** Registers a refresh-event listener (held weakly; no unsubscribe required) */
 	public void AddIRefreshGitDirEvent(IRefreshGitDirEvent _Event)
 	{
 		RefreshGitDirEventList.add(new WeakReference<>(_Event));
 	}
 
+	/** Unregisters a refresh-event listener (optional — dead references are pruned on broadcast) */
 	public void RemoveIRefreshGitDirEvent(IRefreshGitDirEvent _Event)
 	{
 		int i = 0;
@@ -340,12 +431,21 @@ public class AlphaEngine
 		}
 	}
 
+	/**
+	 * Saves the session and broadcasts a refresh event — the single entry point
+	 * UI code calls when something user-visible changed (window focus in/out,
+	 * tab selection).
+	 *
+	 * @param _Reason       why the refresh was triggered (for logging/debug)
+	 * @param _GitDirTarget the repository to refresh; null refreshes all open ones
+	 */
 	public void AttemptSaveAndBroadcastRefresh(String _Reason, GitDir _GitDirTarget)
 	{
 		SaveSession();
 		BroadcastIRefreshGitDirEvent(_GitDirTarget, _Reason);
 	}
 
+	/** Notifies every live open-event listener, pruning dead weak references inline */
 	private void BroadcastIOpenGitDirEvent(GitDir _GitDirTarget)
 	{
 		int i = 0;
@@ -364,6 +464,7 @@ public class AlphaEngine
 		}
 	}
 
+	/** SHA-256 of the session payload; lets SaveSession skip writes when nothing changed */
 	private String ComputeSessionHash(String _Payload)
 	{
 		try
@@ -383,6 +484,7 @@ public class AlphaEngine
 		}
 	}
 
+	/** Notifies every live close-event listener, pruning dead weak references inline */
 	private void BroadcastICloseGitDirEvent(GitDir _GitDirTarget)
 	{
 		int i = 0;
@@ -401,6 +503,7 @@ public class AlphaEngine
 		}
 	}
 
+	/** Notifies every live refresh-event listener, pruning dead weak references inline */
 	private void BroadcastIRefreshGitDirEvent(GitDir _GitDirTarget, String _Reason)
 	{
 		int i = 0;

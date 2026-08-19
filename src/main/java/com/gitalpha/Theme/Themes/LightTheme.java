@@ -11,7 +11,7 @@ import com.gitalpha.Type.ThemeColor;
 public class LightTheme extends ColorPalette
 {
 	/**
-	 * Populate the 11 base colors that define this theme as sRGB float
+	 * Populate the 12 base colors that define this theme as sRGB float
 	 * literals (each historical hex channel, scaled to 0-1). See the
 	 * {@link ColorPalette} class doc for the derived-theme design.
 	 */
@@ -24,7 +24,8 @@ public class LightTheme extends ColorPalette
 		SetActiveHighlightColor(new ThemeColor("ActiveHighlight", 0.23529412f, 0.53333336f, 0.92156863f));
 		SetPassiveHighlightColor(new ThemeColor("PassiveHighlight", 0.8666667f, 0.95686275f, 1.0f));
 		SetBorderColor(new ThemeColor("Border", 0.8156863f, 0.84313726f, 0.87058824f));
-		SetBackgroundColor(new ThemeColor("Background", 1.0f, 1.0f, 1.0f));
+		SetBackground1Color(new ThemeColor("Background 1", 1.0f, 1.0f, 1.0f));
+		SetBackground2Color(new ThemeColor("Background 2", 0.9607843f, 0.9607843f, 0.9647059f));
 		SetAddedColor(new ThemeColor("Added", 0.1764706f, 0.6431373f, 0.30588236f));
 		SetRemovedColor(new ThemeColor("Removed", 0.8117647f, 0.13333334f, 0.18039216f));
 		SetModifiedColor(new ThemeColor("Modified", 0.6039216f, 0.40392157f, 0.0f));

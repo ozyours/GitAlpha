@@ -6,15 +6,18 @@ import com.gitalpha.Type.ThemeColor;
 import java.util.Map;
 
 /**
- * The flat tab-pane skin: the header strip uses the palette background;
+ * The flat tab-pane skin: the header strip behind the buttons uses
+ * Background 2 (the window-level backdrop, same as the scene root), while
  * inactive tabs are derived darker and the active (selected) tab derived
- * brighter, so the selected tab reads as the lit one in both themes. Labels
- * follow the palette (muted for inactive, body text for active) and the close
- * button is muted, accent on hover. The tab button is roomier than Modena's
- * default (generous vertical and horizontal padding, so the label sits clear
- * of the tab edges) and its label larger, both set in {@code em} so they
- * scale with the base font. Selector chains mirror Modena's full paths so
- * the palette values win the cascade at equal specificity.
+ * brighter from Background 1 (the panel background), so the selected tab
+ * reads as the lit one in both themes. Labels follow the palette (muted for
+ * inactive, body
+ * text for active) and the close button is muted, accent on hover. The tab
+ * button is roomier than Modena's default (generous vertical and horizontal
+ * padding, so the label sits clear of the tab edges) and its label larger,
+ * both set in {@code em} so they scale with the base font. Selector chains
+ * mirror Modena's full paths so the palette values win the cascade at equal
+ * specificity.
  * <p>
  * A hairline runs across the top of the content canvas, separating the tab
  * buttons from the content below.
@@ -77,9 +80,9 @@ public final class TabPaneSkin extends ThemeSkin
 	}
 
 	/**
-	 * Resolve the nine placeholder colors: the strip background, the
-	 * {@code derive()}d tab shades, the labels, the close button and the
-	 * header/content separator.
+	 * Resolve the nine placeholder colors: the strip background (Background 2),
+	 * the {@code derive()}d tab shades from Background 1, the labels, the close
+	 * button and the header/content separator.
 	 *
 	 * @param _Palette the palette to read colors from
 	 * @return the nine placeholder values
@@ -88,9 +91,13 @@ public final class TabPaneSkin extends ThemeSkin
 	protected Object[] GetColorArguments(ColorPalette _Palette)
 	{
 		Map<String, ThemeColor> __Lookup = _Palette.GetColorLookup();
+		// The strip behind the buttons is the window-level backdrop
+		// (Background 2), so the empty header space matches the scene root;
+		// the tab buttons themselves derive from Background 1 (the panel
+		// background), so the buttons and the strip stay distinct.
 		String __Bg = _Palette.GetBackgroundColor().GetHex(__Lookup);
 		return new Object[] {
-				__Bg,
+				_Palette.GetBackground2Color().GetHex(__Lookup),
 				"derive(" + __Bg + ", -12%)",
 				"derive(" + __Bg + ", -6%)",
 				"derive(" + __Bg + ", +12%)",

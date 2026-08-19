@@ -58,6 +58,13 @@ class BranchWidget extends BaseWidget
 		// children that opt in via Vgrow.
 		VBox.setVgrow(LocalTreeView, Priority.ALWAYS);
 		VBox.setVgrow(RemoteTreeView, Priority.ALWAYS);
+		// The two branch panes must stretch to fill the width the grid row
+		// grants them — HBox only stretches children that opt in via Hgrow,
+		// otherwise the trees would stay at their preferred width and leave
+		// the rest of the branch row empty. Both panes opt in, so any extra
+		// width is shared equally between local and remote.
+		HBox.setHgrow(localBox, Priority.ALWAYS);
+		HBox.setHgrow(remoteBox, Priority.ALWAYS);
 		getChildren().add(h);
 	}
 

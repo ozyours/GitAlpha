@@ -4,23 +4,24 @@ import com.gitalpha.Theme.ColorPalette;
 
 /**
  * The scene-level base stylesheet: a single {@code .root} rule that disables
- * the default Modena focus ring app-wide. JavaFX focus colors are looked-up
- * colors, so every control referencing {@code -fx-focus-color} /
- * {@code -fx-faint-focus-color} resolves them up the scene graph to this root
- * value — one rule covers all controls in every registered scene. Explicit
- * {@code :focused} borders baked by the widget skins (buttons, text inputs,
- * check boxes) are unaffected: they set {@code -fx-border-color} directly,
- * not via the focus lookups.
+ * the default Modena focus ring app-wide and paints the window backdrop with
+ * the palette's secondary background ({@code -gitalpha-background-2}). JavaFX
+ * focus colors are looked-up colors, so every control referencing
+ * {@code -fx-focus-color} / {@code -fx-faint-focus-color} resolves them up the
+ * scene graph to this root value — one rule covers all controls in every
+ * registered scene. Explicit {@code :focused} borders baked by the widget
+ * skins (buttons, text inputs, check boxes) are unaffected: they set
+ * {@code -fx-border-color} directly, not via the focus lookups.
  * <p>
  * Unlike the per-element skins this class is a composition, not a single
  * format: it concatenates the focus-ring kill, the palette's dynamic
  * {@code -gitalpha-*} CSS variables from {@link ColorPalette#GetCssOverrides}
- * (two {@code .root} rules that CSS merges) and the combo-box popup skin.
- * The popup renders in its own scene that node-level skins cannot reach, but
- * inherits this scene stylesheet, so its rules resolve the scene's variables
- * — the only way to theme it. Consequently {@link #Bake} is overridden
- * instead of filling placeholders, and the abstract hooks return the focus
- * ring fragment / no arguments for consistency.
+ * and the two popup skins (combo box + context menu). The popups render in
+ * their own scenes that node-level skins cannot reach, but inherit this scene
+ * stylesheet, so their rules resolve the scene's variables — the only way to
+ * theme them. Consequently {@link #Bake} is overridden instead of filling
+ * placeholders, and the abstract hooks return the focus ring fragment / no
+ * arguments for consistency.
  */
 public final class BaseSkin extends ThemeSkin
 {
@@ -28,6 +29,7 @@ public final class BaseSkin extends ThemeSkin
 			.root {
 			    -fx-focus-color: transparent;
 			    -fx-faint-focus-color: transparent;
+			    -fx-background-color: -gitalpha-background-2;
 			}
 			""";
 
@@ -64,6 +66,47 @@ public final class BaseSkin extends ThemeSkin
 			""";
 
 	/**
+	 * The context-menu popup skin (menu bars and right-click menus): palette
+	 * background with a border hairline and rounded corners, palette text on
+	 * the items, a passive-highlight (hover) row, an accent focus ring on the
+	 * focused item, and a border hairline on separators. Like the combo-box
+	 * popup it renders in its own scene that node-level skins cannot reach, so
+	 * it is baked here with the scene's variables.
+	 */
+	private static final String CONTEXT_MENU_POPUP_CSS_FORMAT = """
+			.context-menu {
+			    -fx-background-color: -gitalpha-background;
+			    -fx-background-insets: 0;
+			    -fx-background-radius: 4;
+			    -fx-border-color: -gitalpha-border;
+			    -fx-border-width: 1;
+			    -fx-border-radius: 4;
+			    -fx-padding: 4 0 4 0;
+			}
+			.context-menu > .separator > .line {
+			    -fx-border-color: -gitalpha-border;
+			    -fx-border-width: 1 0 0 0;
+			}
+			.context-menu .menu-item {
+			    -fx-background-color: transparent;
+			    -fx-padding: 4 10 4 10;
+			}
+			.context-menu .menu-item > .label {
+			    -fx-text-fill: -gitalpha-text;
+			    -fx-font-size: 12px;
+			}
+			.context-menu .menu-item:hover {
+			    -fx-background-color: -gitalpha-passive-highlight;
+			}
+			.context-menu .menu-item:focused {
+			    -fx-background-color: -gitalpha-passive-highlight;
+			    -fx-border-color: -gitalpha-primary;
+			    -fx-border-width: 1;
+			    -fx-border-radius: 3;
+			}
+			""";
+
+	/**
 	 * @return the focus-ring fragment ({@link #CSS_FORMAT})
 	 */
 	@Override
@@ -86,7 +129,8 @@ public final class BaseSkin extends ThemeSkin
 
 	/**
 	 * Bake the scene base stylesheet: the focus-ring kill plus the palette's
-	 * {@code -gitalpha-*} CSS variables and the combo-box popup skin.
+	 * {@code -gitalpha-*} CSS variables and the combo-box + context-menu popup
+	 * skins.
 	 *
 	 * @param _Palette the palette whose CSS variables are inlined
 	 * @return the data-URI stylesheet URL
@@ -94,7 +138,7 @@ public final class BaseSkin extends ThemeSkin
 	@Override
 	public String Bake(ColorPalette _Palette)
 	{
-		String __Css = CSS_FORMAT + "\n" + _Palette.GetCssOverrides() + COMBO_BOX_POPUP_CSS_FORMAT;
+		String __Css = CSS_FORMAT + "\n" + _Palette.GetCssOverrides() + COMBO_BOX_POPUP_CSS_FORMAT + CONTEXT_MENU_POPUP_CSS_FORMAT;
 		return ToDataUri(__Css);
 	}
 }

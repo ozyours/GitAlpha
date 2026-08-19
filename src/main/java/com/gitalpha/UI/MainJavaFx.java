@@ -42,10 +42,11 @@ public class MainJavaFx extends Application
 		stage.setTitle("Git Alpha");
 		stage.setScene(__Scene);
 
-		// The left pane is fixed at 500px and its rows never shrink below their
-		// minimums, so clamp the window to 800x780: the height keeps the commit
-		// form fully visible (720px layout floor + ~60px of top chrome: menu
-		// bar + quick command bar), the width keeps the diff viewer usable
+		// The left pane starts at 500px (persisted globally once resized) and
+		// its rows never shrink below their minimums, so clamp the window to
+		// 800x780: the height keeps the commit form fully visible (720px
+		// layout floor + ~60px of top chrome: menu bar + quick command bar),
+		// the width keeps the diff viewer usable
 		// beside the left column. The height floor is clamped to the primary
 		// screen's visual bounds so a small display (e.g. 1366x768 with a
 		// taskbar) can still shrink the window to fit. Set before applying the

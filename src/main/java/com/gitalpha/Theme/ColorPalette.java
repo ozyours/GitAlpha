@@ -58,7 +58,8 @@ public abstract class ColorPalette
 		ActiveHighlightColor = _Source.ActiveHighlightColor.Copy();
 		PassiveHighlightColor = _Source.PassiveHighlightColor.Copy();
 		BorderColor = _Source.BorderColor.Copy();
-		BackgroundColor = _Source.BackgroundColor.Copy();
+		Background1Color = _Source.Background1Color.Copy();
+		Background2Color = _Source.Background2Color.Copy();
 		AddedColor = _Source.AddedColor.Copy();
 		RemovedColor = _Source.RemovedColor.Copy();
 		ModifiedColor = _Source.ModifiedColor.Copy();
@@ -72,7 +73,12 @@ public abstract class ColorPalette
 	private ThemeColor ActiveHighlightColor;
 	private ThemeColor PassiveHighlightColor;
 	private ThemeColor BorderColor;
-	private ThemeColor BackgroundColor;
+	private ThemeColor Background1Color;
+	/** Secondary background: the scene/window-level backdrop (e.g. the root
+	 *  background), while {@link #Background1Color} is the content/panel-level
+	 *  background. Kept separate so the window frame can differ slightly from
+	 *  the panels it hosts (e.g. greyish white around white content). */
+	private ThemeColor Background2Color;
 	// --- Git status colors (bases; shades derived via MixToward) ---
 	private ThemeColor AddedColor;
 	private ThemeColor RemovedColor;
@@ -135,11 +141,19 @@ public abstract class ColorPalette
 	}
 
 	/**
-	 * @return the background color
+	 * @return the background color (content/panel level)
 	 */
 	public ThemeColor GetBackgroundColor()
 	{
-		return BackgroundColor;
+		return Background1Color;
+	}
+
+	/**
+	 * @return the secondary background color (window-level backdrop)
+	 */
+	public ThemeColor GetBackground2Color()
+	{
+		return Background2Color;
 	}
 
 	/**
@@ -238,13 +252,23 @@ public abstract class ColorPalette
 	}
 
 	/**
-	 * Set the background color.
+	 * Set the background color (content/panel level).
 	 *
 	 * @param _Color the color to store
 	 */
-	public void SetBackgroundColor(ThemeColor _Color)
+	public void SetBackground1Color(ThemeColor _Color)
 	{
-		BackgroundColor = _Color;
+		Background1Color = _Color;
+	}
+
+	/**
+	 * Set the secondary background color (window-level backdrop).
+	 *
+	 * @param _Color the color to store
+	 */
+	public void SetBackground2Color(ThemeColor _Color)
+	{
+		Background2Color = _Color;
 	}
 
 	/**
@@ -280,7 +304,7 @@ public abstract class ColorPalette
 	/**
 	 * Build the name-to-color lookup used to resolve derived slots: every slot
 	 * registers under its hard-coded {@link ThemeColor#GetName()}. Built fresh
-	 * on each call so palette mutations are always reflected. All 11 slots are
+	 * on each call so palette mutations are always reflected. All 12 slots are
 	 * populated by the concrete themes; a null slot is skipped defensively (a
 	 * derived slot referencing it then fails with a clear "unknown source"
 	 * error at resolve time instead of an opaque NPE here).
@@ -297,7 +321,8 @@ public abstract class ColorPalette
 		PutSlot(__Lookup, ActiveHighlightColor);
 		PutSlot(__Lookup, PassiveHighlightColor);
 		PutSlot(__Lookup, BorderColor);
-		PutSlot(__Lookup, BackgroundColor);
+		PutSlot(__Lookup, Background1Color);
+		PutSlot(__Lookup, Background2Color);
 		PutSlot(__Lookup, AddedColor);
 		PutSlot(__Lookup, RemovedColor);
 		PutSlot(__Lookup, ModifiedColor);
@@ -313,14 +338,14 @@ public abstract class ColorPalette
 	// --- Derived diff shades ---
 	// The row background is the base strongly tinted toward the palette
 	// background; the intra-line highlight sits between the two. Mixing toward
-	// BackgroundColor (not white) keeps the same base correct in dark themes.
+	// Background1Color (not white) keeps the same base correct in dark themes.
 
 	/**
 	 * Added-line row background: {@link #GetAddedColor()} tinted toward the background
 	 */
 	public String GetAddedBackground()
 	{
-		return MixToward(AddedColor, BackgroundColor, 0.90);
+		return MixToward(AddedColor, Background1Color, 0.90);
 	}
 
 	/**
@@ -328,7 +353,7 @@ public abstract class ColorPalette
 	 */
 	public String GetAddedIntra()
 	{
-		return MixToward(AddedColor, BackgroundColor, 0.70);
+		return MixToward(AddedColor, Background1Color, 0.70);
 	}
 
 	/**
@@ -336,7 +361,7 @@ public abstract class ColorPalette
 	 */
 	public String GetRemovedBackground()
 	{
-		return MixToward(RemovedColor, BackgroundColor, 0.90);
+		return MixToward(RemovedColor, Background1Color, 0.90);
 	}
 
 	/**
@@ -344,7 +369,7 @@ public abstract class ColorPalette
 	 */
 	public String GetRemovedIntra()
 	{
-		return MixToward(RemovedColor, BackgroundColor, 0.70);
+		return MixToward(RemovedColor, Background1Color, 0.70);
 	}
 
 	/**
@@ -370,13 +395,14 @@ public abstract class ColorPalette
 		AppendVar(__Css, "-gitalpha-active-highlight", ActiveHighlightColor.GetHex(__Lookup));
 		AppendVar(__Css, "-gitalpha-passive-highlight", PassiveHighlightColor.GetHex(__Lookup));
 		AppendVar(__Css, "-gitalpha-border", BorderColor.GetHex(__Lookup));
-		AppendVar(__Css, "-gitalpha-background", BackgroundColor.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-background", Background1Color.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-background-2", Background2Color.GetHex(__Lookup));
 		AppendVar(__Css, "-gitalpha-added", AddedColor.GetHex(__Lookup));
-		AppendVar(__Css, "-gitalpha-added-bg", MixToward(AddedColor, BackgroundColor, 0.90, __Lookup));
-		AppendVar(__Css, "-gitalpha-added-intra", MixToward(AddedColor, BackgroundColor, 0.70, __Lookup));
+		AppendVar(__Css, "-gitalpha-added-bg", MixToward(AddedColor, Background1Color, 0.90, __Lookup));
+		AppendVar(__Css, "-gitalpha-added-intra", MixToward(AddedColor, Background1Color, 0.70, __Lookup));
 		AppendVar(__Css, "-gitalpha-removed", RemovedColor.GetHex(__Lookup));
-		AppendVar(__Css, "-gitalpha-removed-bg", MixToward(RemovedColor, BackgroundColor, 0.90, __Lookup));
-		AppendVar(__Css, "-gitalpha-removed-intra", MixToward(RemovedColor, BackgroundColor, 0.70, __Lookup));
+		AppendVar(__Css, "-gitalpha-removed-bg", MixToward(RemovedColor, Background1Color, 0.90, __Lookup));
+		AppendVar(__Css, "-gitalpha-removed-intra", MixToward(RemovedColor, Background1Color, 0.70, __Lookup));
 		AppendVar(__Css, "-gitalpha-modified", ModifiedColor.GetHex(__Lookup));
 		__Css.append("}\n");
 		return __Css.toString();

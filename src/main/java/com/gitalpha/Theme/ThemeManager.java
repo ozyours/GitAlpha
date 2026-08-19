@@ -6,7 +6,9 @@ import com.gitalpha.Theme.Skin.CheckBoxSkin;
 import com.gitalpha.Theme.Skin.ComboBoxSkin;
 import com.gitalpha.Theme.Skin.DialogSkin;
 import com.gitalpha.Theme.Skin.ListViewSkin;
+import com.gitalpha.Theme.Skin.MenuBarSkin;
 import com.gitalpha.Theme.Skin.ScrollBarSkin;
+import com.gitalpha.Theme.Skin.SplitPaneSkin;
 import com.gitalpha.Theme.Skin.TabPaneSkin;
 import com.gitalpha.Theme.Skin.TextInputSkin;
 import com.gitalpha.Theme.Skin.ThemeSkin;
@@ -182,6 +184,33 @@ public class ThemeManager
 	public List<String> GetTabPaneStylesheets()
 	{
 		return List.of(new TabPaneSkin().Bake(ActivePalette));
+	}
+
+	/**
+	 * Stylesheet for a themed menu bar ({@link com.gitalpha.UI.Components.ATopMenuBar}),
+	 * baked from the active palette as an inline data-URI stylesheet: flat
+	 * secondary fill with hover (passive) and open (active) menu buttons.
+	 * See {@link ThemeSkin}.
+	 *
+	 * @return the stylesheet URL for the baked menu-bar skin
+	 */
+	public List<String> GetMenuBarStylesheets()
+	{
+		return List.of(new MenuBarSkin().Bake(ActivePalette));
+	}
+
+	/**
+	 * Stylesheet for a themed split pane ({@link com.gitalpha.UI.Components.ASplitPane}),
+	 * baked from the active palette as an inline data-URI stylesheet:
+	 * transparent background with a thin palette-border divider that widens to
+	 * the passive highlight on hover (the visible draggable border between the
+	 * panes). See {@link ThemeSkin}.
+	 *
+	 * @return the stylesheet URL for the baked split-pane skin
+	 */
+	public List<String> GetSplitPaneStylesheets()
+	{
+		return List.of(new SplitPaneSkin().Bake(ActivePalette));
 	}
 
 	/**

@@ -4,22 +4,24 @@ import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Engine.GitDirContainer.IRefreshGitDirEvent;
 import com.gitalpha.Type.FileChange;
+import com.gitalpha.UI.Components.ASplitPane;
 import com.gitalpha.UI.Components.ATabPane;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
 import javafx.scene.control.Tab;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 
 import java.util.Objects;
 
 /**
- * Project view for one open repository. The content is an outer two-column
- * grid: the left sub-tab pane (fixed 500px) holds "Changes" (branches, file
- * changes and the commit form) and "History" (the {@link TreeViewWidget}
- * commit-graph placeholder); the shared {@link TextViewerWidget} diff viewer
- * fills the right column and shows whichever of the two tabs' selections is
- * active. Subscribes to global refresh events and keeps its sub-widgets in
- * sync with the repository state.
+ * Project view for one open repository. The content is an outer split pane:
+ * the left sub-tab pane (user-resizable, persisted globally) holds "Changes"
+ * (branches, file changes and the commit form) and "History" (the
+ * {@link TreeViewWidget} commit-graph placeholder); the shared
+ * {@link TextViewerWidget} diff viewer fills the right pane and shows whichever
+ * of the two tabs' selections is active. Subscribes to global refresh events
+ * and keeps its sub-widgets in sync with the repository state.
  */
 public class GitDirWidget extends StackPane
 {
@@ -40,29 +42,12 @@ public class GitDirWidget extends StackPane
 		TabButton = _TabButton;
 		GitDirTarget = _GitDir;
 
-		// Create grid layout
+		// Create the sub-widgets; the "Changes" grid is assembled below.
 		BranchWidgetInstance = new BranchWidget(GitDirTarget, this);
 		ChangesWidgetInstance = new ChangesWidget(GitDirTarget, this);
 		CommitWidgetInstance = new CommitWidget(GitDirTarget, this);
 		TextViewerWidgetInstance = new TextViewerWidget(GitDirTarget, this); // TODO: Pass the selected FileChange when implemented
 		TreeViewWidgetInstance = new TreeViewWidget(GitDirTarget, this);
-
-		// Outer two-column grid: the left sub-tab pane keeps a fixed width and
-		// the diff viewer (column 1) takes all remaining space. The viewer is
-		// shared across both tabs, so switching "Changes" / "History" keeps the
-		// same TextViewerWidget on screen.
-		var __OuterGrid = new GridPane();
-		var __LeftColumn = new ColumnConstraints();
-		__LeftColumn.setMinWidth(LEFT_PANE_WIDTH);
-		__LeftColumn.setPrefWidth(LEFT_PANE_WIDTH);
-		__LeftColumn.setMaxWidth(LEFT_PANE_WIDTH);
-		__OuterGrid.getColumnConstraints().add(__LeftColumn);
-
-		// The single outer row is growable so both the tab pane and the diff
-		// viewer stretch to fill the widget height.
-		var __OuterRow = new RowConstraints();
-		__OuterRow.setVgrow(Priority.ALWAYS);
-		__OuterGrid.getRowConstraints().add(__OuterRow);
 
 		// The "Changes" tab hosts the three working-tree widgets stacked in
 		// their own grid; row sizing (the constants below) is the layout
@@ -85,6 +70,16 @@ public class GitDirWidget extends StackPane
 		__CommitRow.setPrefHeight(COMMIT_ROW_PREF_HEIGHT);
 		__CommitRow.setMinHeight(COMMIT_ROW_PREF_HEIGHT);
 		__ChangesLayout.getRowConstraints().addAll(__BranchRow, __ChangesRow, __CommitRow);
+		// The single column stretches to fill the grid's full width so the
+		// branch/changes/commit widgets extend across the whole left pane of
+		// the outer split pane: Hgrow ALWAYS absorbs the extra space the grid
+		// is given, and PercentWidth 100 pins the column to the entire grid
+		// width. Without these flags the widgets would sit at their preferred
+		// widths and leave the rest of the left pane empty.
+		var __ContentColumn = new ColumnConstraints();
+		__ContentColumn.setHgrow(Priority.ALWAYS);
+		__ContentColumn.setPercentWidth(100);
+		__ChangesLayout.getColumnConstraints().add(__ContentColumn);
 
 		__ChangesLayout.add(BranchWidgetInstance, 0, 0);  // Top
 		__ChangesLayout.add(ChangesWidgetInstance, 0, 1); // Middle
@@ -102,15 +97,60 @@ public class GitDirWidget extends StackPane
 		__HistoryTab.setClosable(false);
 		ATabPane __SubTabPane = new ATabPane(__ChangesTab, __HistoryTab);
 
-		__OuterGrid.add(__SubTabPane, 0, 0);
-		__OuterGrid.add(TextViewerWidgetInstance, 1, 0);
+		// Outer split pane: the left sub-tab pane and the shared diff viewer
+		// are separated by a draggable divider — the vertical border between
+		// the two panels. The left-pane width is user-resizable and persisted
+		// globally (one width for every project, stored directly in the session
+		// file by AlphaEngine), and the divider itself is themed by the
+		// split-pane skin.
+		ASplitPane __SplitPane = new ASplitPane(__SubTabPane, TextViewerWidgetInstance);
+		// Neither side may collapse completely: the sub-tab pane keeps a floor
+		// width so the branch/changes/commit widgets stay usable, and the diff
+		// viewer keeps a floor too so a wide window can't be monopolized by the
+		// left pane. The SplitPane divider drag respects both floors.
+		__SubTabPane.setMinWidth(LEFT_PANE_MIN_WIDTH);
+		TextViewerWidgetInstance.setMinWidth(RIGHT_PANE_MIN_WIDTH);
 
-		// The diff viewer fills the whole right column
-		GridPane.setHgrow(TextViewerWidgetInstance, Priority.ALWAYS);
-		GridPane.setVgrow(TextViewerWidgetInstance, Priority.ALWAYS);
+		// Restore the persisted column width and keep it stable across window
+		// resizes. The divider position is a fraction, so the saved pixel width
+		// is converted to a fraction only once the pane has a real width —
+		// applying it before the pane is sized would let SplitPaneSkin's
+		// size-settling redistribute the divider (JDK-8092863). Every later
+		// resize (window maximize/restore) re-applies the saved width the same
+		// way, so the left pane keeps its user-chosen pixel width instead of
+		// being scaled with the window.
+		__SplitPane.widthProperty().addListener((__Obs, __Old, __New) ->
+		{
+			double __Total = __SplitPane.getWidth();
+			if (__Total <= 0)
+				return;
+			// Convert the saved pixel width to a divider fraction and clamp so
+			// neither pane violates its floor on a narrow window (a stale huge
+			// width must not collapse the viewer).
+			double __MinFraction = LEFT_PANE_MIN_WIDTH / __Total;
+			double __MaxFraction = 1.0 - RIGHT_PANE_MIN_WIDTH / __Total;
+			double __Fraction = AlphaEngine.Instance.GetSharedLeftPaneWidth() / __Total;
+			__SplitPane.setDividerPositions(Math.max(__MinFraction, Math.min(__MaxFraction, __Fraction)));
+		});
 
-		__OuterGrid.setHgap(10);
-		getChildren().add(__OuterGrid);
+		// Persist the left-pane width (in pixels) back into the shared engine
+		// state only while the user is dragging the divider — globally, not per
+		// project; the next session save writes it to the file. Window
+		// maximize/restore changes the pane width and moves the divider too,
+		// but that is a transient resize redistribution, not user intent, and
+		// must not overwrite the persisted width. The mouse flags gate the
+		// position listener so only genuine drags write the shared scalar.
+		final boolean[] __Dragging = { false };
+		__SplitPane.addEventFilter(MouseEvent.MOUSE_PRESSED, __Event -> __Dragging[0] = true);
+		__SplitPane.addEventFilter(MouseEvent.MOUSE_RELEASED, __Event -> __Dragging[0] = false);
+		__SplitPane.getDividers().get(0).positionProperty().addListener((__Obs, __Old, __New) ->
+		{
+			if (!__Dragging[0] || __New == null || __SplitPane.getWidth() <= 0)
+				return;
+			AlphaEngine.Instance.SetSharedLeftPaneWidth(__New.doubleValue() * __SplitPane.getWidth());
+		});
+
+		getChildren().add(__SplitPane);
 
 		RefreshGitDirEventListener = (_GitDirTarget, _Reason) ->
 		{
@@ -124,8 +164,19 @@ public class GitDirWidget extends StackPane
 		RefreshGitDirWidget();
 	}
 
-	/** Fixed width (px) of the left pane; the diff viewer takes the remaining width */
-	private static final double LEFT_PANE_WIDTH = 500;
+	/**
+	 * Minimum width (px) of the left sub-tab pane. The SplitPane divider
+	 * cannot shrink it below this, so the branch/changes/commit widgets always
+	 * stay usable. The pane's preferred/actual width is user-resizable and
+	 * persisted globally via {@link AlphaEngine#GetSharedLeftPaneWidth()}.
+	 */
+	private static final double LEFT_PANE_MIN_WIDTH = 250;
+	/**
+	 * Minimum width (px) of the diff viewer (right pane). The SplitPane
+	 * divider cannot shrink it below this, so a wide window can't be
+	 * monopolized by the left pane.
+	 */
+	private static final double RIGHT_PANE_MIN_WIDTH = 200;
 	/** Pinned height (px) of the branch tree row (min == max, never grows or shrinks) */
 	private static final double BRANCH_ROW_MIN_HEIGHT = 140;
 	/**
@@ -146,9 +197,11 @@ public class GitDirWidget extends StackPane
 	public final GitDir GitDirTarget;
 
 	private final BranchWidget BranchWidgetInstance;
+	/** The staged/unstaged file list of the "Changes" sub-tab */
 	private final ChangesWidget ChangesWidgetInstance;
+	/** The commit summary/description form at the bottom of the "Changes" sub-tab */
 	private final CommitWidget CommitWidgetInstance;
-	/** The single shared diff viewer (right column of the outer grid) that
+	/** The single shared diff viewer (right pane of the outer split pane) that
 	 * serves both sub-tabs: "Changes" shows the working-tree diff, "History"
 	 * will show the selected commit's diff. Selection-driven — no explicit
 	 * refresh of its own. */
@@ -158,6 +211,7 @@ public class GitDirWidget extends StackPane
 	private final TreeViewWidget TreeViewWidgetInstance;
 	/** Refresh listener that rebuilds this widget when its repo refreshes (null target = any repo) */
 	private final IRefreshGitDirEvent RefreshGitDirEventListener;
+	/** True once the widget is disposed; guards async refresh callbacks and the dispose itself */
 	private boolean Disposed = false;
 
 	/** Point the diff viewer at the given file change (selection-driven). */

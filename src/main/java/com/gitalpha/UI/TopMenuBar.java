@@ -1,6 +1,7 @@
 package com.gitalpha.UI;
 
 import com.gitalpha.Engine.GitDir;
+import com.gitalpha.UI.Components.ATopMenuBar;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import com.gitalpha.UI.Stash.StashWidget;
 import javafx.scene.control.*;
@@ -13,7 +14,7 @@ import java.util.Map;
  * been implemented (Stash) open their respective UI; remaining entries are
  * placeholders that show a "not implemented yet" notice.
  */
-public class TopMenuBar extends MenuBar
+public class TopMenuBar extends ATopMenuBar
 {
 	/** Tracks open stash windows per repository to prevent duplicate windows */
 	private static final Map<GitDir, StashWidget> OpenStashWindows = new HashMap<>();
@@ -25,6 +26,7 @@ public class TopMenuBar extends MenuBar
 		getMenus().addAll(CreateFileMenu(), CreateGitMenu(), CreateSettingsMenu(), CreateHelpMenu());
 	}
 
+	/** Build the File menu: open project, close tab, and quit (all placeholders). */
 	private static Menu CreateFileMenu()
 	{
 		Menu __FileMenu = new Menu("File");
