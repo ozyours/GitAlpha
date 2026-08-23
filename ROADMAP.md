@@ -124,6 +124,16 @@ Items that were discussed and have been committed to `master`.
       `CheckBoxSkin`/`ComboBoxSkin`/`DialogSkin`/`TextInputSkin`/`TabPaneSkin`/`BaseSkin`),
       `LightTheme`/`DarkTheme` moved to `Theme/Themes`, `EButtonVariant`/`ETextVariant` moved to the
       `Type` package (`318fc7d`)
+- [x] **Resizable left pane with persisted width** — the fixed 500px left column becomes a themed
+      `ASplitPane` with a user-draggable divider; the pixel width is stored globally as one
+      `"LeftPaneWidth"` scalar in the session file via `AlphaEngine` (default 500) and re-applied on
+      every pane resize so window maximize/restore keeps the left pane stable; persistence is gated
+      on actual divider drags so resize redistribution (JDK-8092863) can't clobber the saved width;
+      floor widths `LEFT_PANE_MIN_WIDTH = 250` / `RIGHT_PANE_MIN_WIDTH = 200`; theming adds the
+      `Background2` window-backdrop palette slot, `MenuBarSkin`/`SplitPaneSkin` and
+      `ATopMenuBar`/`ASplitPane` components, and migrates `TopMenuBar`/`StashWidget` to themed
+      variants; `ChangesWidget` re-enables batch-disabled checkboxes on success/failure;
+      `BranchWidget` panes stretch to fill the branch row (`6bb0a30`)
 
 ---
 
@@ -212,6 +222,25 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
       renames, no `Class.forName`. `CommandContext` passes the project + UI hooks; `ERefreshPolicy`
       is per command. The `QuickCommandBar` is currently a fixed row of placeholder buttons; the
       same model also serves the `TopMenuBar` entries. Depends on the Settings UI item below
+
+### Tab pane → button + stack pane
+
+- [ ] **Tab pane → AButton + StackPane migration** — the inner sub-tab pane is an `ATabPane` with
+      two fixed non-closable tabs (`GitDirWidget.java:94-98`); the outer project pane is an
+      `ATabPane` in `AlphaUI` (`AlphaUI.java:45-63`) hosting `GitDirTabButton` tabs. Planned:
+      replace the inner sub-tab pane with an `HBox` of `AButton` headers + a `StackPane` content
+      swap — selection tracked manually (button `setOnAction` → swap content + restyle the selected
+      button via a style class, since `EButtonVariant` is final in `AButton`), removing the
+      `TabPaneSkin` `.tab` CSS and the header-height layout quirk behind the pinned commit row
+      (`GitDirWidget.java:57-61`). Done = the selection-driven diff flow (`ReadFileChange`) and the
+      pinned row layout survive; keyboard nav (arrow keys) reimplemented on the header or
+      consciously dropped. The outer pane is a larger refactor (TabPane API used by
+      `AlphaUI.java:57-63,167-174`, `ProjectBrowser.java:64-66`, `GitDirEntryUI.java:31-33`,
+      `TopMenuBar.java:95-98`) — keep `ATabPane` there unless drag-reorder demands it
+- [ ] **Draggable tab reorder** — future plan: make the tab buttons draggable to reorder. On the
+      inner sub-tab (2 fixed tabs) reorder is meaningless; on the outer project pane the built-in
+      `TabPane.TabDragPolicy.REORDER` (JavaFX 21) is the low-effort path, and a custom drag on
+      `AButton` headers only pays off after the migration above
 
 ### Project widget state
 

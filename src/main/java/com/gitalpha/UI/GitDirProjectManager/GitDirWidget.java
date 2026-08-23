@@ -5,10 +5,10 @@ import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Engine.GitDirContainer.IRefreshGitDirEvent;
 import com.gitalpha.Type.FileChange;
 import com.gitalpha.UI.Components.ASplitPane;
-import com.gitalpha.UI.Components.ATabPane;
+import com.gitalpha.UI.Components.ATabButton;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
-import javafx.scene.control.Tab;
+import javafx.scene.Node;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 
@@ -16,11 +16,13 @@ import java.util.Objects;
 
 /**
  * Project view for one open repository. The content is an outer split pane:
- * the left sub-tab pane (user-resizable, persisted globally) holds "Changes"
- * (branches, file changes and the commit form) and "History" (the
- * {@link TreeViewWidget} commit-graph placeholder); the shared
- * {@link TextViewerWidget} diff viewer fills the right pane and shows whichever
- * of the two tabs' selections is active. Subscribes to global refresh events
+ * the left sub-tab pane (user-resizable, persisted globally) is a header row
+ * of two {@link ATabButton}s above a {@link StackPane} content swap — no
+ * TabPane machinery — holding "Changes" (branches, file changes and the
+ * commit form) and "History" (the {@link TreeViewWidget} commit-graph
+ * placeholder). The shared {@link TextViewerWidget} diff viewer fills the
+ * right pane and follows the "Changes" file-list selection; the "History"
+ * graph will drive it once implemented. Subscribes to global refresh events
  * and keeps its sub-widgets in sync with the repository state.
  */
 public class GitDirWidget extends StackPane
@@ -88,14 +90,40 @@ public class GitDirWidget extends StackPane
 
 		// The two views share the diff viewer on the right: "Changes" shows the
 		// working-tree diff; "History" is still a commit-graph placeholder, so
-		// its diff will surface here once the graph lands (see ROADMAP.md). Both
-		// tabs are non-closable — they are the fixed structure of the project
-		// widget, not user-managed tabs.
-		Tab __ChangesTab = new Tab("Changes", __ChangesLayout);
-		Tab __HistoryTab = new Tab("History", TreeViewWidgetInstance);
-		__ChangesTab.setClosable(false);
-		__HistoryTab.setClosable(false);
-		ATabPane __SubTabPane = new ATabPane(__ChangesTab, __HistoryTab);
+		// its diff will surface here once the graph lands (see ROADMAP.md). The
+		// sub-tab header is an HBox ({@code a-tab-header}, spacing 0) of real
+		// buttons (ATabButton) above a StackPane ({@code a-tab-content} with
+		// hairline) content swap — no TabPane machinery, so the header height
+		// is predictable and the selected button is styled by its own skin.
+		btn_ChangesTab = new ATabButton("Changes");
+		btn_HistoryTab = new ATabButton("History");
+		HBox __TabHeader = new HBox(btn_ChangesTab, btn_HistoryTab);
+		__TabHeader.getStyleClass().add("a-tab-header");
+		__TabHeader.setSpacing(0);
+		stk_SubTabContent = new StackPane();
+		stk_SubTabContent.getStyleClass().add("a-tab-content");
+		// The header strip (Background 2) and the content hairline are part of
+		// the same tab skin, so the strip and its two buttons re-bake together
+		// on palette switches. The sheets are attached to the header/content
+		// nodes themselves so the descendant selectors match.
+		__TabHeader.getStylesheets().addAll(com.gitalpha.Theme.ThemeManager.Instance.GetSubTabButtonStylesheets());
+		stk_SubTabContent.getStylesheets().addAll(com.gitalpha.Theme.ThemeManager.Instance.GetSubTabButtonStylesheets());
+		// Keep a strong reference so the weak-registered listener is not pruned
+		// while this widget lives; it re-bakes the header/content strip on theme
+		// changes (the buttons re-bake via their own ATabButton listeners).
+		TabSkinListener = _Palette ->
+		{
+			__TabHeader.getStylesheets().clear();
+			__TabHeader.getStylesheets().addAll(com.gitalpha.Theme.ThemeManager.Instance.GetSubTabButtonStylesheets());
+			stk_SubTabContent.getStylesheets().clear();
+			stk_SubTabContent.getStylesheets().addAll(com.gitalpha.Theme.ThemeManager.Instance.GetSubTabButtonStylesheets());
+		};
+		com.gitalpha.Theme.ThemeManager.Instance.AddIThemeChangeEvent(TabSkinListener);
+		btn_ChangesTab.setOnAction(__Event -> SelectSubTab(btn_ChangesTab, __ChangesLayout));
+		btn_HistoryTab.setOnAction(__Event -> SelectSubTab(btn_HistoryTab, TreeViewWidgetInstance));
+		VBox __SubPanel = new VBox(__TabHeader, stk_SubTabContent);
+		VBox.setVgrow(stk_SubTabContent, Priority.ALWAYS);
+		SelectSubTab(btn_ChangesTab, __ChangesLayout); // initial: Changes tab active
 
 		// Outer split pane: the left sub-tab pane and the shared diff viewer
 		// are separated by a draggable divider — the vertical border between
@@ -103,12 +131,12 @@ public class GitDirWidget extends StackPane
 		// globally (one width for every project, stored directly in the session
 		// file by AlphaEngine), and the divider itself is themed by the
 		// split-pane skin.
-		ASplitPane __SplitPane = new ASplitPane(__SubTabPane, TextViewerWidgetInstance);
-		// Neither side may collapse completely: the sub-tab pane keeps a floor
+		ASplitPane __SplitPane = new ASplitPane(__SubPanel, TextViewerWidgetInstance);
+		// Neither side may collapse completely: the sub-tab panel keeps a floor
 		// width so the branch/changes/commit widgets stay usable, and the diff
 		// viewer keeps a floor too so a wide window can't be monopolized by the
 		// left pane. The SplitPane divider drag respects both floors.
-		__SubTabPane.setMinWidth(LEFT_PANE_MIN_WIDTH);
+		__SubPanel.setMinWidth(LEFT_PANE_MIN_WIDTH);
 		TextViewerWidgetInstance.setMinWidth(RIGHT_PANE_MIN_WIDTH);
 
 		// Restore the persisted column width and keep it stable across window
@@ -196,6 +224,20 @@ public class GitDirWidget extends StackPane
 	/** The repository this widget displays */
 	public final GitDir GitDirTarget;
 
+	/** The "Changes" sub-tab header button (selected by default) */
+	private final ATabButton btn_ChangesTab;
+	/** The "History" sub-tab header button */
+	private final ATabButton btn_HistoryTab;
+	/** The sub-tab content stack ({@code a-tab-content} hairline) — shows the active tab's view */
+	private final StackPane stk_SubTabContent;
+	/**
+	 * Strong reference to the theme listener that re-bakes the header
+	 * ({@code a-tab-header}, Background2 strip) and content hairline
+	 * stylesheets on palette switches; held strongly so the weak registry in
+	 * {@code ThemeManager} does not prune it while this widget lives.
+	 */
+	private final com.gitalpha.Theme.IThemeChangeEvent TabSkinListener;
+
 	private final BranchWidget BranchWidgetInstance;
 	/** The staged/unstaged file list of the "Changes" sub-tab */
 	private final ChangesWidget ChangesWidgetInstance;
@@ -221,6 +263,22 @@ public class GitDirWidget extends StackPane
 	}
 
 	/**
+	 * Switch the active sub-tab: restyle the header buttons (selected state)
+	 * and swap the content stack to the selected view. The diff viewer is
+	 * selection-driven ({@link #ReadFileChange}), so no diff refresh is needed
+	 * here.
+	 *
+	 * @param _Selected the button to mark as the active tab
+	 * @param _Content  the view to show in the content stack
+	 */
+	private void SelectSubTab(ATabButton _Selected, Node _Content)
+	{
+		btn_ChangesTab.SetSelected(_Selected == btn_ChangesTab);
+		btn_HistoryTab.SetSelected(_Selected == btn_HistoryTab);
+		stk_SubTabContent.getChildren().setAll(_Content);
+	}
+
+	/**
 	 * Refreshes the repository state, then on the FX thread rebuilds the
 	 * changes and branch lists. No-op once disposed. The diff viewer needs
 	 * no explicit refresh — it follows the changes-list selection.
@@ -243,7 +301,13 @@ public class GitDirWidget extends StackPane
 		});
 	}
 
-	/** Unregisters the refresh listener and marks this widget disposed. */
+	/**
+	 * Unregisters the refresh and tab-skin theme listeners and marks this
+	 * widget disposed. The theme listener ({@link #TabSkinListener}) must be
+	 * removed here because {@code ThemeManager} holds it weakly — the strong
+	 * reference in this widget would otherwise keep re-baking header/content
+	 * stylesheets after disposal.
+	 */
 	public void Dispose()
 	{
 		if (Disposed)
@@ -251,5 +315,6 @@ public class GitDirWidget extends StackPane
 
 		Disposed = true;
 		AlphaEngine.Instance.RemoveIRefreshGitDirEvent(RefreshGitDirEventListener);
+		com.gitalpha.Theme.ThemeManager.Instance.RemoveIThemeChangeEvent(TabSkinListener);
 	}
 }

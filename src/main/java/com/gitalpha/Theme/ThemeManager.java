@@ -9,6 +9,7 @@ import com.gitalpha.Theme.Skin.ListViewSkin;
 import com.gitalpha.Theme.Skin.MenuBarSkin;
 import com.gitalpha.Theme.Skin.ScrollBarSkin;
 import com.gitalpha.Theme.Skin.SplitPaneSkin;
+import com.gitalpha.Theme.Skin.SubTabButtonSkin;
 import com.gitalpha.Theme.Skin.TabPaneSkin;
 import com.gitalpha.Theme.Skin.TextInputSkin;
 import com.gitalpha.Theme.Skin.ThemeSkin;
@@ -94,6 +95,23 @@ public class ThemeManager
 	public List<String> GetButtonStylesheets(EButtonVariant _Variant)
 	{
 		return List.of(new ButtonSkin(_Variant).Bake(ActivePalette));
+	}
+
+	/**
+	 * Stylesheet for a themed tab button
+	 * ({@link com.gitalpha.UI.Components.ATabButton}), baked from the active
+	 * palette as an inline data-URI stylesheet: full flat tab skin — square
+	 * corners, generous {@code em} padding, larger label — on a Background2
+	 * header strip, with tab faces derived from the panel background (inactive
+	 * derive -12%, hover derive -6%, selected derive +12%), muted vs text
+	 * labels, a hairline above the content, focus ring and pressed shade. See
+	 * {@link ThemeSkin} ({@link SubTabButtonSkin}).
+	 *
+	 * @return the stylesheet URL for the baked tab-button skin
+	 */
+	public List<String> GetSubTabButtonStylesheets()
+	{
+		return List.of(new SubTabButtonSkin().Bake(ActivePalette));
 	}
 
 	/**

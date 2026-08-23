@@ -74,9 +74,10 @@ public class AButton extends Button implements IThemeChangeEvent
 	 * Replace the inline skin stylesheet with one baked from the active palette
 	 * for this button's variant. The data-URI URL changes whenever the colors
 	 * do, so JavaFX re-parses the new skin (and keeps the old one cached until
-	 * it is dropped).
+	 * it is dropped). Protected so subclasses (e.g. {@link ATabButton}) can
+	 * extend the skin set with their own state skins.
 	 */
-	private void ApplySkin()
+	protected void ApplySkin()
 	{
 		getStylesheets().clear();
 		getStylesheets().addAll(ThemeManager.Instance.GetButtonStylesheets(Variant));
