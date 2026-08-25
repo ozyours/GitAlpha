@@ -141,6 +141,19 @@ Items that were discussed and have been committed to `master`.
       `ThemeManager.GetSubTabButtonStylesheets()` added; `ASubTabPane`/`ISubTabSelectionEvent`
       composite widget extracted with owned selection model, single cascading stylesheet and
       weak-referenced listeners, ready for later integration; `AGENTS.md` updated (`16caf1b`)
+- [x] **Outer project TabPane → ATabWidget migration** — both tab strips off JavaFX
+      `TabPane`/`Tab`: the outer project pane in `AlphaUI` becomes a modifiable
+      `ATabWidget` ("+" affix fires `INewTabRequestEvent`, per-tab × close faces fire
+      `ITabCloseEvent`); `GitDirTabButton` becomes a plain controller owning a stable
+      root `StackPane` mapped via `TabsByRoot` so lookups survive reorders;
+      `GitDirWidget`'s hand-wired `ATabButton` header + `StackPane` swap and its manual
+      `TabSkinListener` replaced by a non-modifiable `ATabWidget`;
+      `ATabPane`/`ASubTabPane`/`TabPaneSkin`/`ThemeManager.GetTabPaneStylesheets()`
+      deprecated for removal; `SubTabButtonSkin` gains flat `.a-tab-close` close-face
+      rules (`2773f06`)
+- [x] **Draggable tab reorder** — `ATabWidget` supports live drag-to-reorder in
+      modifiable mode; event handlers resolve indexes via `indexOf` at invocation so
+      closures survive reorders (`2773f06`)
 
 ---
 
@@ -229,22 +242,6 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
       renames, no `Class.forName`. `CommandContext` passes the project + UI hooks; `ERefreshPolicy`
       is per command. The `QuickCommandBar` is currently a fixed row of placeholder buttons; the
       same model also serves the `TopMenuBar` entries. Depends on the Settings UI item below
-
-### Tab pane → button + stack pane
-
-- [ ] **Outer project TabPane → ASubTabPane migration** — the inner sub-tab pane was migrated
-      in `16caf1b` (`ATabButton` + `SubTabButtonSkin` + `ASubTabPane`/`ISubTabSelectionEvent`
-      composite widget ready); the outer project pane in `AlphaUI` (`AlphaUI.java:45-63`) still
-      uses `ATabPane` with `GitDirTabButton` tabs. Planned: integrate `ASubTabPane` into
-      `GitDirWidget` (replacing the hand-wired header + `TabSkinListener`), then migrate the
-      outer pane. The outer pane is a larger refactor (TabPane API used by
-      `AlphaUI.java:57-63,167-174`, `ProjectBrowser.java:64-66`,
-      `GitDirEntryUI.java:31-33`, `TopMenuBar.java:95-98`) — keep `ATabPane` there unless
-      drag-reorder demands it
-- [ ] **Draggable tab reorder** — future plan: make the tab buttons draggable to reorder. On the
-      inner sub-tab (2 fixed tabs) reorder is meaningless; on the outer project pane the built-in
-      `TabPane.TabDragPolicy.REORDER` (JavaFX 21) is the low-effort path, and a custom drag on
-      `AButton` headers only pays off after the migration above
 
 ### Project widget state
 
