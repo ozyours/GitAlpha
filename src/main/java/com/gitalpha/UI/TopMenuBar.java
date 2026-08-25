@@ -92,11 +92,8 @@ public class TopMenuBar extends ATopMenuBar
 	{
 		if (AlphaUI.Instance == null)
 			return null;
-		var __TabPane = AlphaUI.Instance.GetTabPaneInstance();
-		if (__TabPane == null)
-			return null;
-		var __Selected = __TabPane.getSelectionModel().getSelectedItem();
-		if (__Selected instanceof GitDirTabButton __Tab)
+		GitDirTabButton __Tab = AlphaUI.Instance.TryGetSelectedProjectTab();
+		if (__Tab != null)
 			return __Tab.GetGitDirTarget();
 		return null;
 	}

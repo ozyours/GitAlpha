@@ -198,7 +198,15 @@ public class ThemeManager
 	 * the palette background. See {@link ThemeSkin}.
 	 *
 	 * @return the stylesheet URL for the baked tab-pane skin
+	 * @deprecated Only consumer is the deprecated {@code ATabPane}; use
+	 *             {@link #GetSubTabButtonStylesheets()} (via
+	 *             {@link com.gitalpha.UI.Components.ATabWidget}) for themed
+	 *             tab strips.
 	 */
+	// The entire chain (this method + ATabPane + TabPaneSkin) is deprecated
+	// together and removed together — the bake below is intentional.
+	@Deprecated(forRemoval = true)
+	@SuppressWarnings("deprecation")
 	public List<String> GetTabPaneStylesheets()
 	{
 		return List.of(new TabPaneSkin().Bake(ActivePalette));

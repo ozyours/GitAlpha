@@ -34,7 +34,14 @@ import java.util.List;
  * {@link VBox} in the scene graph, so the weak ref to {@code this} (the
  * {@link IThemeChangeEvent} registration) survives as long as the widget
  * is in the scene.
+ *
+ * @deprecated Superseded by {@link ATabWidget} in non-modifiable mode, which
+ *             behaves identically (fixed tabs, selection model, single
+ *             cascading stylesheet) and additionally supports modifiable
+ *             operation. Use {@link ATabWidget#ATabWidget(boolean)} with
+ *             {@code false} instead.
  */
+@Deprecated
 public class ASubTabPane extends VBox implements IThemeChangeEvent
 {
 	/** The header row holding the tab buttons */

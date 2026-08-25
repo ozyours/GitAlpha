@@ -61,9 +61,9 @@ public class ProjectBrowser extends StackPane implements IObject
 				if (AlphaUIInstance != null)
 				{
 					GitDirTabButton ExistingTab = AlphaUIInstance.TryGetOpenTabByPath(__GitPath);
-					if (ExistingTab != null && ExistingTab.getTabPane() != null)
+					if (ExistingTab != null)
 					{
-						ExistingTab.getTabPane().getSelectionModel().select(ExistingTab);
+						AlphaUIInstance.SelectProjectTab(ExistingTab);
 						return;
 					}
 				}

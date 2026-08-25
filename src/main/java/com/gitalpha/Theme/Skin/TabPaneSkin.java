@@ -26,7 +26,15 @@ import java.util.Map;
  * inactive label, active label, close button, close hover, header/content
  * separator. Shades are computed in CSS with {@code derive()} so the skin
  * needs nothing but the palette hex values.
+ *
+ * @deprecated No live consumers: the JavaFX-{@code TabPane}-based
+ *             {@code ATabPane} component is deprecated in favour of
+ *             {@link com.gitalpha.UI.Components.ATabWidget}, whose faces are
+ *             styled by {@link SubTabButtonSkin} instead. Kept only to serve
+ *             {@link com.gitalpha.Theme.ThemeManager#GetTabPaneStylesheets}
+ *             until that chain is removed.
  */
+@Deprecated(forRemoval = true)
 public final class TabPaneSkin extends ThemeSkin
 {
 	private static final String CSS_FORMAT = """

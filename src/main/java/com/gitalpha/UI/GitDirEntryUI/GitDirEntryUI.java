@@ -28,15 +28,20 @@ public class GitDirEntryUI extends StackPane
                 if (AlphaUI.Instance != null)
                 {
                     var __Existing = AlphaUI.Instance.TryGetOpenTabByPath(GitDirTarget.GetGitDirPath());
-                    if (__Existing != null && __Existing.getTabPane() != null)
+                    if (__Existing != null)
                     {
-                        __Existing.getTabPane().getSelectionModel().select(__Existing);
+                        AlphaUI.Instance.SelectProjectTab(__Existing);
                         return;
                     }
                 }
 
+                // Guard before opening: TryOpenGitDir registers the repo in
+                // the engine, so a null tab must not leave an orphan open dir.
+                if (TabButton == null)
+                    return;
+
                 var __Target = AlphaEngine.Instance.TryOpenGitDir(GitDirTarget.GetGitDirPath());
-                if (__Target != null && TabButton != null)
+                if (__Target != null)
                     TabButton.OpenProject(__Target);
             }
         });

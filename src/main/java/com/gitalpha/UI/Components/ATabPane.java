@@ -16,7 +16,15 @@ import javafx.scene.control.TabPane;
  * owned centrally by the theme layer ({@link ThemeManager#GetTabPaneStylesheets}
  * / {@code ThemeSkin}), so every themed tab pane shares one style source, and
  * the skin re-applies on palette switches via {@link IThemeChangeEvent}.
+ *
+ * @deprecated Superseded by {@link ATabWidget}, which provides the same
+ *             themed tab strip without JavaFX TabPane machinery plus
+ *             optional add/close/reorder support. No live consumers remain
+ *             (the outer project tab pane migrated to {@code ATabWidget});
+ *             kept only so the paired {@link ThemeManager#GetTabPaneStylesheets}
+ *             / {@code TabPaneSkin} chain stays compilable until removal.
  */
+@Deprecated(forRemoval = true)
 public class ATabPane extends TabPane implements IThemeChangeEvent
 {
 	/**

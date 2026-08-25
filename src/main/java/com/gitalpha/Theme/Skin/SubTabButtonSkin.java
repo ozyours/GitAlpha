@@ -12,24 +12,53 @@ import java.util.Map;
  * the tab faces themselves derive from the panel background (Background 1):
  * inactive tabs darker (-12%), hover warmer (-6%), the selected tab brighter
  * (+12%) and labelled in the body text colour (unselected in muted), with a
- * pressed shade and content hairline. Mirrors the palette treatment of
- * {@link TabPaneSkin} so the button header is visually interchangeable with a
- * real {@code TabPane} header. No focus ring is drawn — tab buttons are
+ * pressed shade and content hairline. Mirrors the palette treatment of the
+ * deprecated {@link TabPaneSkin} so the button header is visually
+ * interchangeable with a real {@code TabPane} header (and remains so after
+ * that skin's removal). No focus ring is drawn — tab buttons are
  * navigation controls, not primary actions.
  * <p>
- * Eight {@code %s} placeholders in CSS order: header strip Background2,
- * inactive tab derive -12%, inactive label muted, hover tab derive -6%,
- * selected tab derive +12%, selected label text, pressed shade, content
- * hairline border. Shades are computed in CSS with {@code derive()} so the
- * skin needs only palette hex values plus derived expressions.
- */
+ * The {@code .a-tab-close} rules style the {@code ×} close
+ * {@link com.gitalpha.UI.Components.ATabButton} that
+ * {@link com.gitalpha.UI.Components.ATabWidget} places inside each tab face
+ * in modifiable mode: the Modena button chrome (background and border, with
+ * their insets) is reset to transparent so it reads as a flat face — muted
+ * normally, primary on hover as the affordance cue; the hover rule re-asserts
+ * the transparent background so only the label colour changes. Because the
+ * close button also carries {@code .a-tab-button} (inherited from
+ * {@code ATabButton}), whose {@code :hover}/{@code :pressed} rules would
+ * otherwise out-specify the flat reset, the compound
+ * {@code .a-tab-button.a-tab-close} rules at the end re-flatten those states.
+ * The {@code ×} glyph intentionally inherits the tab face's {@code 1.2em}
+ * font size, matching the original close-graphic design.
+ * <p>
+	 * Twelve {@code %s} placeholders in CSS order: header strip Background2,
+	 * inactive tab derive -12%, inactive label muted, hover tab derive -6%,
+	 * selected tab derive +12%, selected label text, pressed shade, content
+	 * hairline border, close face muted, close face hover, then muted and hover
+	 * repeated for the compound close-button state rules. Shades are computed
+	 * in CSS with {@code derive()} so the skin needs only palette hex values
+	 * plus derived expressions.
+	 * <p>
+	 * The tab header's horizontal scroll bar is suppressed by setting
+	 * {@link javafx.scene.control.ScrollPane.ScrollBarPolicy#NEVER} on its
+	 * {@link javafx.scene.control.ScrollPane} in
+	 * {@link com.gitalpha.UI.Components.ATabWidget}, rather than hiding a
+	 * post-attach skin node with CSS; programmatic and wheel scrolling remain
+	 * available.
+	 */
 public final class SubTabButtonSkin extends ThemeSkin
 {
 	/**
-	 * CSS template with eight {@code %s} placeholders in CSS order: header
+	 * CSS template with twelve {@code %s} placeholders in CSS order: header
 	 * strip Background2, inactive tab, inactive label, hover tab, selected
-	 * tab, selected label, pressed shade, and content hairline — as consumed
-	 * by {@link #GetColorArguments}.
+	 * tab, selected label, pressed shade, content hairline, close face
+	 * normal, close face hover, then muted and hover repeated for the
+	 * compound {@code .a-tab-button.a-tab-close} state rules — as consumed by
+	 * {@link #GetColorArguments}. The tab header's horizontal bar is omitted
+	 * by setting {@link javafx.scene.control.ScrollPane.ScrollBarPolicy#NEVER}
+	 * on the pane in {@link com.gitalpha.UI.Components.ATabWidget}; this skin
+	 * does not need CSS rules to hide a mounted bar.
 	 */
 	private static final String CSS_FORMAT = """
 			.a-tab-header {
@@ -64,6 +93,35 @@ public final class SubTabButtonSkin extends ThemeSkin
 			    -fx-border-color: %s transparent transparent transparent;
 			    -fx-border-width: 1 0 0 0;
 			}
+			.a-tab-close {
+			    -fx-background-color: transparent;
+			    -fx-background-insets: 0;
+			    -fx-border-color: transparent;
+			    -fx-border-insets: 0;
+			    -fx-text-fill: %s;
+			    -fx-padding: 0 0 0 4;
+			    -fx-cursor: hand;
+			}
+			.a-tab-close:hover {
+			    -fx-background-color: transparent;
+			    -fx-text-fill: %s;
+			}
+			.a-tab-button.a-tab-close {
+			    -fx-background-color: transparent;
+			    -fx-background-insets: 0;
+			    -fx-border-color: transparent;
+			    -fx-border-insets: 0;
+			    -fx-text-fill: %s;
+			    -fx-padding: 0 0 0 4;
+			    -fx-cursor: hand;
+			}
+			.a-tab-button.a-tab-close:hover {
+			    -fx-background-color: transparent;
+			    -fx-text-fill: %s;
+			}
+			.a-tab-button.a-tab-close:pressed {
+			    -fx-background-color: transparent;
+			}
 			""";
 
 	/**
@@ -76,13 +134,15 @@ public final class SubTabButtonSkin extends ThemeSkin
 	}
 
 	/**
-	 * Resolve the eight {@link #CSS_FORMAT} placeholders in CSS order: header
+	 * Resolve the twelve {@link #CSS_FORMAT} placeholders in CSS order: header
 	 * strip Background2, inactive tab derive -12% from Background, inactive
 	 * label muted, hover tab derive -6%, selected tab derive +12%, selected
-	 * label text, pressed shade, and content hairline border.
+	 * label text, pressed shade, content hairline border, close face muted,
+	 * close face hover, then muted and hover repeated for the compound
+	 * close-button state rules.
 	 *
 	 * @param _Palette the palette to read colors from
-	 * @return the eight placeholder values in CSS order
+	 * @return the twelve placeholder values in CSS order
 	 */
 	@Override
 	protected Object[] GetColorArguments(ColorPalette _Palette)
@@ -97,6 +157,10 @@ public final class SubTabButtonSkin extends ThemeSkin
 				"derive(" + __Bg + ", +12%)",
 				_Palette.GetTextColor().GetHex(__Lookup),
 				_Palette.GetBorderColor().GetHex(__Lookup),
-				_Palette.GetBorderColor().GetHex(__Lookup) };
+				_Palette.GetBorderColor().GetHex(__Lookup),
+				_Palette.GetMutedTextColor().GetHex(__Lookup),
+				_Palette.GetPrimaryColor().GetHex(__Lookup),
+				_Palette.GetMutedTextColor().GetHex(__Lookup),
+				_Palette.GetPrimaryColor().GetHex(__Lookup) };
 	}
 }

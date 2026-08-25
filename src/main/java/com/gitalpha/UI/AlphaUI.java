@@ -6,12 +6,12 @@ import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Engine.GitDirContainer.ICloseGitDirEvent;
 import com.gitalpha.Engine.GitDirContainer.IOpenGitDirEvent;
 import com.gitalpha.Function.GitDirFunction;
-import com.gitalpha.UI.Components.ATabPane;
+import com.gitalpha.UI.Components.ATabWidget;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
-import javafx.scene.control.Tab;
-import javafx.scene.control.TabPane;
+import javafx.scene.Node;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 import java.nio.file.Path;
@@ -20,8 +20,11 @@ import java.util.Map;
 
 /**
  * Root layout of the main window: a BorderPane whose top chrome holds the
- * menu + quick command bars and whose center holds the open-project TabPane.
- * Owns the tab-per-project binding map and restores the saved tabs on startup.
+ * menu + quick command bars and whose center holds the open-project
+ * {@link ATabWidget} (modifiable: {@code "+"} affix, per-tab close faces and
+ * drag-to-reorder). Owns the tab-per-project binding map — keyed by the tabs'
+ * stable root nodes, so lookups survive reordering — and restores the saved
+ * tabs on startup.
  */
 public class AlphaUI extends BorderPane
 {
@@ -33,46 +36,56 @@ public class AlphaUI extends BorderPane
 		super();
 		Instance = this;
 
+		TabsByRoot = new HashMap<>();
 		OpenTabsByProjectPath = new HashMap<>();
 
 		// Top chrome: the placeholder menu bar and quick command bar sit above
-		// the tab pane (BorderPane: top = chrome, center = tabs). The quick
+		// the tab widget (BorderPane: top = chrome, center = tabs). The quick
 		// command bar carries the chrome's own vertical spacing via its
 		// margins; the chrome VBox itself has no padding.
 		VBox __TopChrome = new VBox(new TopMenuBar(), new QuickCommandBar());
 		setTop(__TopChrome);
 
-		TabPaneInstance = new ATabPane();
-		setCenter(TabPaneInstance);
+		TabWidgetInstance = new ATabWidget(true);
+		// Apply the user-configured maximum tab face width from settings
+		TabWidgetInstance.SetTabMaxWidth(AlphaSettings.Get().GetSettingEntry(AlphaSettings.TabMaxSize).GetValue_AsInteger());
+		setCenter(TabWidgetInstance);
 
-		TabPaneInstance.getTabs().add(new GitDirTabButton(this, null));
-		TabPaneInstance.setTabMaxWidth(AlphaSettings.Get().GetSettingEntry(AlphaSettings.TabMaxSize).GetDefaultValue_AsInteger());
-
-		// Create a special "+" tab
-		Tab addTab = new Tab("+");
-		addTab.setClosable(false);
-		// Add "+" tab to tabpane
-		TabPaneInstance.getTabs().add(addTab);
-		// Handle add-tab click
-		TabPaneInstance.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) ->
+		// Wire the widget events before adding tabs, so the auto-selection of
+		// the first AddTab already resolves through TabsByRoot.
+		// "+": create a fresh empty project tab and switch to it.
+		TabWidgetInstance.AddNewTabRequestEvent(() ->
 		{
-			if (newTab == addTab)
+			GitDirTabButton __Tab = CreateProjectTab(null);
+			int __Index = TabWidgetInstance.IndexOf(__Tab.GetRoot());
+			if (__Index >= 0)
+				TabWidgetInstance.SelectTab(__Index);
+		});
+		// Close face: route back to the owning tab object (dispose project,
+		// unbind and close the repository). The tab is already removed here.
+		// Closing the selected last tab clears the content without firing a
+		// selection event, so drop the stale root reference explicitly.
+		TabWidgetInstance.AddTabCloseEvent((_Index, _Content) ->
+		{
+			if (SelectedRoot == _Content)
+				SelectedRoot = null;
+			GitDirTabButton __Tab = TabsByRoot.remove(_Content);
+			if (__Tab != null)
+				__Tab.OnClosed();
+		});
+		// Selection: broadcast a refresh for the newly shown project (empty
+		// "New Tab" selections only update SelectedRoot).
+		TabWidgetInstance.AddSelectionEvent((_Index, _Content) ->
+		{
+			SelectedRoot = _Content;
+			GitDirTabButton __Tab = TabsByRoot.get(_Content);
+			if (__Tab != null && __Tab.GetGitDirTarget() != null)
 			{
-				Tab newUserTab = NewTab(null);
-				TabPaneInstance.getTabs().add(TabPaneInstance.getTabs().size() - 1, newUserTab); // insert before "+"
-				TabPaneInstance.getSelectionModel().select(newUserTab); // switch to new tab
-				return;
-			}
-
-			if (newTab instanceof GitDirTabButton)
-			{
-				GitDirTabButton __GitTab = (GitDirTabButton) newTab;
-				if (__GitTab.GetGitDirTarget() != null)
-				{
-					AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("project-tab-selected", __GitTab.GetGitDirTarget());
-				}
+				AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("project-tab-selected", __Tab.GetGitDirTarget());
 			}
 		});
+
+		InitialTab = CreateProjectTab(null); // first AddTab is auto-selected
 
 		OpenGitDirEventListener = (_GitDirTarget) -> Platform.runLater(() ->
 		{
@@ -89,17 +102,42 @@ public class AlphaUI extends BorderPane
 		RestoreOpenTabs();
 	}
 
-	private GitDirTabButton NewTab(GitDir _GitDir)
-	{
-		return new GitDirTabButton(this, _GitDir);
-	}
-
-	private final TabPane TabPaneInstance;
+	private final ATabWidget TabWidgetInstance;
+	/**
+	 * Content-root → tab-object map. Keys are the stable root StackPanes
+	 * registered with the ATabWidget, so entries stay valid across drag
+	 * reorders; removal happens on tab close.
+	 */
+	private final Map<StackPane, GitDirTabButton> TabsByRoot;
+	/** The content root of the currently selected tab (kept by the selection listener) */
+	private Node SelectedRoot;
+	/** The empty tab created at startup; reused for the first restored project */
+	private final GitDirTabButton InitialTab;
 	private final IOpenGitDirEvent OpenGitDirEventListener;
 	private final ICloseGitDirEvent CloseGitDirEventListener;
 
 	private final Map<Path, GitDirTabButton> OpenTabsByProjectPath;
 
+	/**
+	 * Create a tab object, register its stable root and append it to the
+	 * widget. Does not select it (the caller decides; the very first tab is
+	 * auto-selected by the widget).
+	 */
+	private GitDirTabButton CreateProjectTab(GitDir _GitDir)
+	{
+		GitDirTabButton __Tab = new GitDirTabButton(this, _GitDir);
+		TabsByRoot.put(__Tab.GetRoot(), __Tab);
+		TabWidgetInstance.AddTab(__Tab.GetTitle(), __Tab.GetRoot());
+		return __Tab;
+	}
+
+	/**
+	 * Look up the tab object for the given repository. Resolves the
+	 * repository root path and delegates to the path overload.
+	 *
+	 * @param _GitDir the repository to look up, or null
+	 * @return the matching tab, or null if the repository has no open tab
+	 */
 	public GitDirTabButton TryGetCurrentlyOpenGitDirWithTabButton(GitDir _GitDir)
 	{
 		if (_GitDir == null)
@@ -108,6 +146,13 @@ public class AlphaUI extends BorderPane
 		return TryGetOpenTabByPath(_GitDir.GetGitDirPath());
 	}
 
+	/**
+	 * Look up the tab object for the given project path (already
+	 * normalized via {@link GitDirFunction#TryFixGitDirPath}).
+	 *
+	 * @param _ProjectPath the path to look up, or null
+	 * @return the matching tab, or null if the path has no open tab
+	 */
 	public GitDirTabButton TryGetOpenTabByPath(Path _ProjectPath)
 	{
 		if (_ProjectPath == null)
@@ -117,6 +162,51 @@ public class AlphaUI extends BorderPane
 		return OpenTabsByProjectPath.get(_GitPath);
 	}
 
+	/**
+	 * Bring the given project tab to the front (select it in the widget).
+	 * No-op if the tab was already closed.
+	 */
+	public void SelectProjectTab(GitDirTabButton _TabButton)
+	{
+		if (_TabButton == null)
+			return;
+
+		int __Index = TabWidgetInstance.IndexOf(_TabButton.GetRoot());
+		if (__Index >= 0)
+			TabWidgetInstance.SelectTab(__Index);
+	}
+
+	/**
+	 * @return the tab object of the currently selected tab, or null if
+	 *         nothing is selected (empty window)
+	 */
+	public GitDirTabButton TryGetSelectedProjectTab()
+	{
+		if (SelectedRoot == null)
+			return null;
+
+		return TabsByRoot.get(SelectedRoot);
+	}
+
+	/**
+	 * Push a fresh label for the given tab into the widget. Resolves the
+	 * live index at invocation time so retitles survive reorder/close.
+	 */
+	public void UpdateProjectTabTitle(GitDirTabButton _TabButton)
+	{
+		int __Index = TabWidgetInstance.IndexOf(_TabButton.GetRoot());
+		if (__Index >= 0)
+			TabWidgetInstance.SetTabTitle(__Index, _TabButton.GetTitle());
+	}
+
+	/**
+	 * Register the open-tab binding so future path lookups resolve to the
+	 * tab object for the given repository. Called when a project is opened
+	 * or restored; the inverse is {@link #UnbindOpenProjectTab(Path)}.
+	 *
+	 * @param _GitDir    the opened repository (must be non-null with a valid path)
+	 * @param _TabButton the tab hosting the repository
+	 */
 	public void BindOpenProjectTab(GitDir _GitDir, GitDirTabButton _TabButton)
 	{
 		if (_GitDir == null || _TabButton == null)
@@ -129,6 +219,13 @@ public class AlphaUI extends BorderPane
 		OpenTabsByProjectPath.put(_GitPath, _TabButton);
 	}
 
+	/**
+	 * Remove the open-tab binding for the given repository so future path
+	 * lookups no longer resolve to a tab. Delegates to the path overload
+	 * after resolving the repository root.
+	 *
+	 * @param _GitDir the repository whose binding to remove (null-safe)
+	 */
 	public void UnbindOpenProjectTab(GitDir _GitDir)
 	{
 		if (_GitDir == null)
@@ -137,6 +234,14 @@ public class AlphaUI extends BorderPane
 		UnbindOpenProjectTab(_GitDir.GetGitDirPath());
 	}
 
+	/**
+	 * Remove the open-tab binding for the given project path (already
+	 * normalized via {@link GitDirFunction#TryFixGitDirPath}). The
+	 * overloads keep the {@link Path} and {@link GitDir} entry points
+	 * symmetric.
+	 *
+	 * @param _ProjectPath the path whose binding to remove (null-safe)
+	 */
 	public void UnbindOpenProjectTab(Path _ProjectPath)
 	{
 		if (_ProjectPath == null)
@@ -146,11 +251,11 @@ public class AlphaUI extends BorderPane
 		OpenTabsByProjectPath.remove(_GitPath);
 	}
 
-	public TabPane GetTabPaneInstance()
-	{
-		return TabPaneInstance;
-	}
-
+	/**
+	 * Restore the previously open project tabs from the persisted session.
+	 * The first restored project reuses the startup empty tab; subsequent
+	 * projects get fresh tabs appended before the {@code "+"} affix.
+	 */
 	private void RestoreOpenTabs()
 	{
 		var __SavedOpenGitDirs = AlphaEngine.Instance.GetOpenGitDirs();
@@ -163,17 +268,9 @@ public class AlphaUI extends BorderPane
 			if (__GitDir == null)
 				continue;
 
-			GitDirTabButton __TabButton;
-			if (i == 0 && !TabPaneInstance.getTabs().isEmpty() && TabPaneInstance.getTabs().get(0) instanceof GitDirTabButton)
-			{
-				__TabButton = (GitDirTabButton) TabPaneInstance.getTabs().get(0);
-			}
-			else
-			{
-				__TabButton = NewTab(null);
-				TabPaneInstance.getTabs().add(TabPaneInstance.getTabs().size() - 1, __TabButton);
-			}
-
+			// Reuse the initial empty tab for the first restored project;
+			// later projects get fresh tabs appended before the "+" affix.
+			GitDirTabButton __TabButton = (i == 0) ? InitialTab : CreateProjectTab(null);
 			__TabButton.OpenProject(__GitDir);
 		}
 	}
