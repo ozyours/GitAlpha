@@ -1,8 +1,10 @@
 package com.gitalpha.UI.Components;
 
+import com.gitalpha.Engine.AlphaSettings;
 import com.gitalpha.Theme.ColorPalette;
 import com.gitalpha.Theme.IThemeChangeEvent;
 import com.gitalpha.Theme.ThemeManager;
+import com.gitalpha.Type.ETabButtonVariant;
 import javafx.css.PseudoClass;
 import javafx.scene.Node;
 import javafx.scene.control.Control;
@@ -28,8 +30,7 @@ import java.util.List;
  * {@link StackPane} content swap, optionally user-modifiable — the
  * constructor flag turns on the {@code "+"} affix (new tab), a {@code ×}
  * close button on every tab, and drag-to-reorder of the header faces. When
- * not modifiable it behaves like an {@link ASubTabPane}: tabs are managed
- * purely programmatically.
+ * not modifiable, tabs are managed purely programmatically.
  * <p>
  * The header is horizontally scrollable when tab faces overflow: the face
  * strip sits inside a {@link ScrollPane}, while the {@code "+"} affix (in
@@ -58,7 +59,8 @@ import java.util.List;
  * invocation time rather than capturing the creation index, so closures stay
  * valid across reorders and closes.
  * <p>
- * One stylesheet (baked by {@code SubTabButtonSkin}) cascades from this root
+ * One stylesheet (baked by {@code TabButtonSkin} at this widget's
+ * {@link ETabButtonVariant}) cascades from this root
  * to all descendants ({@code .a-tab-header}, {@code .a-tab-button},
  * {@code .a-tab-close}, {@code .a-tab-content}), so header strip, tab faces,
  * close buttons and hairline re-bake together on palette switches. Listeners
@@ -70,6 +72,14 @@ public class ATabWidget extends VBox implements IThemeChangeEvent
 {
 	/** Horizontal pixels the pointer must travel before a press becomes a drag-reorder */
 	private static final double DRAG_THRESHOLD = 6;
+
+	/**
+	 * Maximum face height (pixels) for the {@link ETabButtonVariant#SMALL}
+	 * variant; matches the CSS-computed content height of a SMALL tab button
+	 * (label + compact padding) so the header strip is visibly shorter than
+	 * the NORMAL main-tab strip.
+	 */
+	private static final double TAB_FACE_SMALL_MAX_HEIGHT = 26;
 
 	/**
 	 * The outer header bar: carries the {@code .a-tab-header} background
@@ -99,6 +109,12 @@ public class ATabWidget extends VBox implements IThemeChangeEvent
 	 */
 	private final boolean Modifiable;
 	/**
+	 * The tab-button skin size variant baked into this strip's cascading
+	 * stylesheet ({@code NORMAL} = full-size main tabs, {@code SMALL} =
+	 * compact sub-tabs); fixed at construction
+	 */
+	private final ETabButtonVariant TabVariant;
+	/**
 	 * The {@code "+"} affix shown when modifiable; null otherwise. Pinned
 	 * to the right edge of the header bar, outside the scroll area.
 	 * Deliberately kept out of {@link #TabButtons}, so selection,
@@ -126,16 +142,33 @@ public class ATabWidget extends VBox implements IThemeChangeEvent
 	private final List<WeakReference<ITabCloseEvent>> TabCloseListeners;
 
 	/**
-	 * Create a modifiable or fixed tab widget.
+	 * Create a modifiable or fixed tab widget with the {@code NORMAL} skin
+	 * variant.
 	 *
 	 * @param _Modifiable true to let the user add ({@code "+"}), close
 	 *                    ({@code ×}) and drag-reorder tabs
 	 */
 	public ATabWidget(boolean _Modifiable)
 	{
+		this(_Modifiable, ETabButtonVariant.NORMAL);
+	}
+
+	/**
+	 * Create a modifiable or fixed tab widget with an explicit tab-button
+	 * skin size variant.
+	 *
+	 * @param _Modifiable true to let the user add ({@code "+"}), close
+	 *                    ({@code ×}) and drag-reorder tabs
+	 * @param _Variant    the {@link TabButtonSkin} size variant to bake into
+	 *                    this strip's stylesheet ({@code NORMAL} for main
+	 *                    tabs, {@code SMALL} for compact secondary strips)
+	 */
+	public ATabWidget(boolean _Modifiable, ETabButtonVariant _Variant)
+	{
 		super();
 
 		Modifiable = _Modifiable;
+		TabVariant = _Variant;
 		TabButtons = new ArrayList<>();
 		TabContents = new ArrayList<>();
 		SelectionListeners = new ArrayList<>();
@@ -158,6 +191,15 @@ public class ATabWidget extends VBox implements IThemeChangeEvent
 		HeaderScrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
 		HeaderScrollPane.setBackground(Background.EMPTY);
 		HeaderScrollPane.setBorder(Border.EMPTY);
+		// Keep the scroll viewport itself at the compact face height: fit-to-height
+		// otherwise lets the ScrollPane expand and leaves excess vertical space in
+		// the SMALL header even though the tab faces are height-capped.
+		if (TabVariant == ETabButtonVariant.SMALL)
+		{
+			HeaderScrollPane.setMinHeight(TAB_FACE_SMALL_MAX_HEIGHT);
+			HeaderScrollPane.setPrefHeight(TAB_FACE_SMALL_MAX_HEIGHT);
+			HeaderScrollPane.setMaxHeight(TAB_FACE_SMALL_MAX_HEIGHT);
+		}
 		InstallWheelScroll();
 
 		// Outer header bar: the full-width background strip. The scroll pane
@@ -183,10 +225,16 @@ public class ATabWidget extends VBox implements IThemeChangeEvent
 		Content.getStyleClass().add("a-tab-content");
 
 		getChildren().addAll(HeaderBar, Content);
+		VBox.setVgrow(HeaderBar, Priority.NEVER);
 		// Content must grow to fill the VBox; the header bar stays at its natural height
 		VBox.setVgrow(Content, Priority.ALWAYS);
 
 		ApplySkin();
+
+		// Apply the user-configured maximum tab face width from settings.
+		int __TabMaxWidth = AlphaSettings.Get().GetSettingEntry(AlphaSettings.TabMaxSize).GetValue_AsInteger();
+		SetTabMaxWidth(__TabMaxWidth);
+
 		// Weak-reference registration: cleanup is automatic when the widget leaves the scene graph
 		ThemeManager.Instance.AddIThemeChangeEvent(this);
 	}
@@ -263,6 +311,11 @@ public class ATabWidget extends VBox implements IThemeChangeEvent
 		TabButton __Button = new TabButton(_Title, Modifiable);
 		__Button.SetOnAction(() -> SelectTab(TabButtons.indexOf(__Button)));
 		ApplyTabSizes(__Button);
+
+		// SMALL variant: cap each tab face's height so the compact strip is
+		// visibly shorter than the NORMAL main-tab strip.
+		if (TabVariant == ETabButtonVariant.SMALL)
+			__Button.SetMaxFaceHeight(TAB_FACE_SMALL_MAX_HEIGHT);
 
 		if (!Modifiable)
 			return __Button;
@@ -654,16 +707,16 @@ public class ATabWidget extends VBox implements IThemeChangeEvent
 
 	/**
 	 * Replace the inline skin stylesheet with one baked from the active
-	 * palette. The data-URI URL changes whenever the colors do, so JavaFX
-	 * re-parses the new skin. The selector chains target the descendant
-	 * classes ({@code .a-tab-header}, {@code .a-tab-button},
-	 * {@code .a-tab-close}, {@code .a-tab-content}) so the single sheet covers
-	 * all four node kinds.
+	 * palette for this widget's {@link TabVariant}. The data-URI URL changes
+	 * whenever the colors do, so JavaFX re-parses the new skin. The selector
+	 * chains target the descendant classes ({@code .a-tab-header},
+	 * {@code .a-tab-button}, {@code .a-tab-close}, {@code .a-tab-content}) so
+	 * the single sheet covers all four node kinds.
 	 */
 	private void ApplySkin()
 	{
 		getStylesheets().clear();
-		getStylesheets().addAll(ThemeManager.Instance.GetSubTabButtonStylesheets());
+		getStylesheets().addAll(ThemeManager.Instance.GetTabButtonStylesheets(TabVariant));
 	}
 
 	// ── Private tab face component ───────────────────────────────────────
@@ -725,9 +778,11 @@ public class ATabWidget extends VBox implements IThemeChangeEvent
 
 			if (_Closable)
 			{
-				// ATabButton keeps the themed registration/skin pipeline; the
-				// additional a-tab-close class (with the skin's compound
-				// .a-tab-button.a-tab-close rules) flattens the Modena chrome.
+				// ATabButton attaches no stylesheet of its own — this widget's
+				// cascading TabButtonSkin sheet styles it at the strip's
+				// variant; the additional a-tab-close class (with the skin's
+				// compound .a-tab-button.a-tab-close rules) flattens the
+				// Modena chrome.
 				btn_Close = new ATabButton("×");
 				btn_Close.getStyleClass().add("a-tab-close");
 				// The old close face was a non-focusable graphic; keep it out
@@ -809,6 +864,19 @@ public class ATabWidget extends VBox implements IThemeChangeEvent
 		void SetTitle(String _Title)
 		{
 			lbl_Title.setText(_Title);
+		}
+
+		/**
+		 * Cap this face's height. Used by the {@link ETabButtonVariant#SMALL}
+		 * variant to force the tab strip shorter than the NORMAL main-tab
+		 * strip; the {@link Label} inside will ellipsize if the text exceeds
+		 * the available height.
+		 *
+		 * @param _MaxHeight the maximum height in pixels
+		 */
+		void SetMaxFaceHeight(double _MaxHeight)
+		{
+			setMaxHeight(_MaxHeight);
 		}
 
 		/** Run the activation action if one is registered. */

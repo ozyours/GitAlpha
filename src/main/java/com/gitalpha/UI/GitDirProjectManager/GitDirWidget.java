@@ -3,6 +3,7 @@ package com.gitalpha.UI.GitDirProjectManager;
 import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Engine.GitDirContainer.IRefreshGitDirEvent;
+import com.gitalpha.Type.ETabButtonVariant;
 import com.gitalpha.Type.FileChange;
 import com.gitalpha.UI.Components.ASplitPane;
 import com.gitalpha.UI.Components.ATabWidget;
@@ -93,7 +94,7 @@ public class GitDirWidget extends StackPane
 		// StackPane content swap); its single cascading stylesheet re-bakes on
 		// palette switches via the widget's own theme registration, so no
 		// extra skin listener is needed here.
-		SubTabWidget = new ATabWidget(false);
+		SubTabWidget = new ATabWidget(false, ETabButtonVariant.SMALL);
 		SubTabWidget.AddTab("Changes", __ChangesLayout);
 		SubTabWidget.AddTab("History", TreeViewWidgetInstance);
 		VBox __SubPanel = SubTabWidget; // ATabWidget is a VBox: header + content stack

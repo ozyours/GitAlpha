@@ -9,12 +9,12 @@ import com.gitalpha.Theme.Skin.ListViewSkin;
 import com.gitalpha.Theme.Skin.MenuBarSkin;
 import com.gitalpha.Theme.Skin.ScrollBarSkin;
 import com.gitalpha.Theme.Skin.SplitPaneSkin;
-import com.gitalpha.Theme.Skin.SubTabButtonSkin;
-import com.gitalpha.Theme.Skin.TabPaneSkin;
+import com.gitalpha.Theme.Skin.TabButtonSkin;
 import com.gitalpha.Theme.Skin.TextInputSkin;
 import com.gitalpha.Theme.Skin.ThemeSkin;
 import com.gitalpha.Theme.Themes.LightTheme;
 import com.gitalpha.Type.EButtonVariant;
+import com.gitalpha.Type.ETabButtonVariant;
 import javafx.collections.ObservableList;
 import javafx.scene.Scene;
 import javafx.scene.control.Dialog;
@@ -98,20 +98,23 @@ public class ThemeManager
 	}
 
 	/**
-	 * Stylesheet for a themed tab button
-	 * ({@link com.gitalpha.UI.Components.ATabButton}), baked from the active
+	 * Stylesheets for the themed tab faces of
+	 * {@link com.gitalpha.UI.Components.ATabWidget}, baked from the active
 	 * palette as an inline data-URI stylesheet: full flat tab skin — square
 	 * corners, generous {@code em} padding, larger label — on a Background2
 	 * header strip, with tab faces derived from the panel background (inactive
 	 * derive -12%, hover derive -6%, selected derive +12%), muted vs text
-	 * labels, a hairline above the content, focus ring and pressed shade. See
-	 * {@link ThemeSkin} ({@link SubTabButtonSkin}).
+	 * labels, a hairline above the content, focus ring and pressed shade. The
+	 * {@code _Variant} picks the face metrics (NORMAL = main tabs, SMALL =
+	 * compact sub-tabs); colors are shared between variants. See
+	 * {@link ThemeSkin} ({@link TabButtonSkin}).
 	 *
+	 * @param _Variant the size variant to bake
 	 * @return the stylesheet URL for the baked tab-button skin
 	 */
-	public List<String> GetSubTabButtonStylesheets()
+	public List<String> GetTabButtonStylesheets(ETabButtonVariant _Variant)
 	{
-		return List.of(new SubTabButtonSkin().Bake(ActivePalette));
+		return List.of(new TabButtonSkin(_Variant).Bake(ActivePalette));
 	}
 
 	/**
@@ -189,27 +192,6 @@ public class ThemeManager
 	public List<String> GetTextAreaStylesheets()
 	{
 		return List.of(new TextInputSkin().Bake(ActivePalette));
-	}
-
-	/**
-	 * Stylesheet for a themed tab pane ({@link com.gitalpha.UI.Components.ATabPane}),
-	 * baked from the active palette as an inline data-URI stylesheet: flat tab
-	 * header with the active tab brighter and the inactive tabs darker than
-	 * the palette background. See {@link ThemeSkin}.
-	 *
-	 * @return the stylesheet URL for the baked tab-pane skin
-	 * @deprecated Only consumer is the deprecated {@code ATabPane}; use
-	 *             {@link #GetSubTabButtonStylesheets()} (via
-	 *             {@link com.gitalpha.UI.Components.ATabWidget}) for themed
-	 *             tab strips.
-	 */
-	// The entire chain (this method + ATabPane + TabPaneSkin) is deprecated
-	// together and removed together — the bake below is intentional.
-	@Deprecated(forRemoval = true)
-	@SuppressWarnings("deprecation")
-	public List<String> GetTabPaneStylesheets()
-	{
-		return List.of(new TabPaneSkin().Bake(ActivePalette));
 	}
 
 	/**
