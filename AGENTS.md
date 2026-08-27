@@ -113,7 +113,7 @@ GitDir (per repo, ISerializable) — data holder only
   - `REFRESH_DATA_ONLY` — refresh GitDir state, no UI broadcast
   - `REFRESH_AND_UPDATE_UI` — refresh + save session + broadcast refresh event (user-visible ops)
 - **Cancellation**: if a new operation arrives during a refresh, `RefreshCanceled` is set and the in-flight process is `destroyForcibly()`-killed; the refresh bails between sub-commands and a fresh one runs after the new operation.
-- Refresh pipeline: `git branch -a` → staged changes → unstaged changes (+ untracked) → diff-merge (keeps existing `FileChange` objects so cached diffs survive).
+- Refresh pipeline: `git branch -a` → `git status --porcelain` (single call parses staged, unstaged, untracked, and renames in one pass) → diff-merge (keeps existing `FileChange` objects so cached diffs survive).
 - Callbacks (`IGitOperationCallback.OnCompleted(ok, error, gitDir)`) fire **on the runner thread** after the batch — wrap UI work in `Platform.runLater`. Callbacks always fire, even when the refresh fails or is skipped.
 - UI rebuild entry point: `GitDirWidget.RefreshGitDirWidget()` → `GitDir.Refresh(callback)` → on the FX thread: `ChangesWidget.UpdateChanges()` + `BranchWidget.UpdateBranchList()` (the diff viewer is driven by the file list selection, so it needs no explicit refresh)
 

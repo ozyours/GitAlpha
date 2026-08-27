@@ -119,9 +119,9 @@ public class GitOperator implements AutoCloseable
 	 * Enqueue a single git command to be executed on the runner thread.
 	 * <p>
 	 * If a refresh is currently in progress, it will be cancelled so this operation
-	 * can execute immediately. After the operation (and any others queued before it)
-	 * complete, a refresh runs if the effective policy requires it and no operation
-	 * in the batch failed. All collected callbacks are then fired.
+	 * can execute immediately. After the operation and other queued work drain, a
+	 * refresh runs when a successful operation requested one. All collected callbacks
+	 * are then fired, including callbacks for failed operations.
 	 *
 	 * @param _Cmd      the git command arguments (e.g. {@code ["checkout", "main"]})
 	 * @param _Policy   what to do after execution
@@ -250,14 +250,12 @@ public class GitOperator implements AutoCloseable
 	}
 
 	/**
-	 * Process a batch of operation results:
-	 * <ol>
-	 *   <li>Check if any operation failed — if so, skip the refresh.</li>
-	 *   <li>If all succeeded and a refresh is pending, run {@link #RunRefresh()}.</li>
-	 *   <li>Fire all collected callbacks with their per-operation result.</li>
-	 * </ol>
-	 * Callbacks are always fired even if the refresh failed or was skipped,
-	 * so callers never hang indefinitely.
+	 * Process a drained batch, run any pending refresh, and deliver callbacks.
+	 * <p>
+	 * A pending refresh is attempted even when another operation in the batch failed;
+	 * the failure is reported through that operation's callback while the refresh
+	 * keeps the GitDir state current for later operations. Callbacks are always fired,
+	 * including when refresh is interrupted, fails, or is skipped.
 	 */
 	private void ProcessResults(List<OperationResult> _Results)
 	{
@@ -492,11 +490,7 @@ public class GitOperator implements AutoCloseable
 
 		// ── Step 2: collect changed files ──
 		var __NewChanges = new ArrayList<FileChange>();
-		CollectChangesByScope(EFileChangeScope.STAGED, __NewChanges);
-		if (RefreshCanceled)
-			return;
-
-		CollectChangesByScope(EFileChangeScope.UNSTAGED, __NewChanges);
+		CollectChangesFromPorcelain(__NewChanges);
 		if (RefreshCanceled)
 			return;
 
@@ -588,75 +582,181 @@ public class GitOperator implements AutoCloseable
 	}
 
 	// ---------------------------------------------------------------------------
-	// Change collection (mirrors GitDir.CollectChangesByScope / CollectChangesByStatus)
+	// Change collection
 	// ---------------------------------------------------------------------------
 
 	/**
-	 * Collects added / modified / removed file changes for a given scope.
-	 * For UNSTAGED scope, also collects untracked files.
-	 * Results are appended to the target list.
+	 * Collects all staged, unstaged, and untracked file changes in a single
+	 * {@code git status --porcelain} call. Each porcelain line has the format
+	 * {@code XY <path>} where X is the index (staged) status and Y is the
+	 * worktree (unstaged) status. Renames ({@code R}) include
+	 * {@code old → new}; only the new path is used.
+	 *
+	 * @param _Target list to append {@link FileChange} entries to
 	 */
-	private void CollectChangesByScope(EFileChangeScope _Scope, List<FileChange> _Target) throws InterruptedException
-	{
-		boolean __IsStaged = _Scope == EFileChangeScope.STAGED;
-
-		List<String> __AddedCmd = __IsStaged ? GitCMDConstant.Changed_Staged_Added : GitCMDConstant.Changed_Unstaged_Added;
-		List<String> __ModifiedCmd = __IsStaged ? GitCMDConstant.Changed_Staged_Modified : GitCMDConstant.Changed_Unstaged_Modified;
-		List<String> __RemovedCmd = __IsStaged ? GitCMDConstant.Changed_Staged_Removed : GitCMDConstant.Changed_Unstaged_Removed;
-
-		CollectChangesByStatus(_Scope, EFileChangeStatus.Added, __AddedCmd, _Target);
-		if (RefreshCanceled)
-			return;
-
-		CollectChangesByStatus(_Scope, EFileChangeStatus.Modified, __ModifiedCmd, _Target);
-		if (RefreshCanceled)
-			return;
-
-		CollectChangesByStatus(_Scope, EFileChangeStatus.Removed, __RemovedCmd, _Target);
-		if (RefreshCanceled)
-			return;
-
-		if (!__IsStaged)
-		{
-			CollectChangesByStatus(_Scope, EFileChangeStatus.Added, GitCMDConstant.Changed_Unstaged_Untracked, _Target);
-		}
-	}
-
-	/**
-	 * Runs a git command to list files of a given change status, parses the output,
-	 * and appends {@link FileChange} entries to the target list.
-	 */
-	private void CollectChangesByStatus(EFileChangeScope _Scope, EFileChangeStatus _Status, List<String> _ListCmd, List<FileChange> _Target) throws InterruptedException
+	private void CollectChangesFromPorcelain(List<FileChange> _Target) throws InterruptedException
 	{
 		Pair<Integer, String> __Res;
 		try
 		{
-			__Res = RunCMD(_ListCmd, true);
+			__Res = RunCMD(GitCMDConstant.Status_Porcelain, true);
 		}
 		catch (IOException __Ex)
 		{
-			throw new RuntimeException("git change listing failed", __Ex);
+			throw new RuntimeException("git status --porcelain failed", __Ex);
 		}
 		if (__Res.getKey() != 0)
 		{
-			// If the process was killed by a cancellation, bail out silently.
-			// The caller's "if (RefreshCanceled) return;" check handles the early exit.
 			if (RefreshCanceled)
 				return;
-			throw new RuntimeException("git change listing failed: " + __Res.getValue());
+			throw new RuntimeException("git status --porcelain failed: " + __Res.getValue());
 		}
 
 		var __Lines = __Res.getValue().split("\n");
 		for (var __RawLine : __Lines)
 		{
-			String __Line = StringFunction.FixCMDString(__RawLine);
-			__Line = __Line.replace('\\', '/');
-			if (__Line.isBlank())
+			// Do not trim the line: the first porcelain column is allowed to be a
+			// space, and trimming it shifts the worktree status into the index slot.
+			String __Line = __RawLine.stripTrailing();
+			if (__Line.length() < 3 || __Line.charAt(2) != ' ')
 				continue;
 
-			Path __Path = GitDirTarget.GetRepoRootPath().resolve(__Line);
-			_Target.add(new FileChange(__Path, _Status, _Scope, GitDirTarget));
+			char __X = __Line.charAt(0); // index (staged) status
+			char __Y = __Line.charAt(1); // worktree (unstaged) status
+
+			String __RawPath = __Line.substring(3);
+			__RawPath = __RawPath.replace("\"", "");
+			List<String> __Paths = ParsePorcelainPaths(__RawPath, __X == 'R' || __Y == 'R');
+
+			// A porcelain record can report an index rename alongside a separate
+			// worktree status (for example, RD after the renamed destination is
+			// deleted). Process each status column independently so that worktree
+			// changes are not hidden by the rename in the index column.
+			if (__X == 'R' || __Y == 'R')
+			{
+				if (__Paths.size() != 2)
+					continue;
+
+				Path __OldPath = GitDirTarget.GetRepoRootPath().resolve(__Paths.get(0));
+				Path __NewPath = GitDirTarget.GetRepoRootPath().resolve(__Paths.get(1));
+				if (__X == 'R')
+				{
+					AddRenameChanges(_Target, __OldPath, __NewPath, EFileChangeScope.STAGED);
+				}
+				else
+				{
+					AddPorcelainChange(_Target, __NewPath, __X, EFileChangeScope.STAGED);
+				}
+
+				if (__Y == 'R')
+				{
+					AddRenameChanges(_Target, __OldPath, __NewPath, EFileChangeScope.UNSTAGED);
+				}
+				else
+				{
+					// The worktree column describes the rename destination, not its
+					// source path. In RD, for instance, D applies to __NewPath.
+					AddPorcelainChange(_Target, __NewPath, __Y, EFileChangeScope.UNSTAGED);
+				}
+				continue;
+			}
+
+			if (__Paths.size() != 1)
+				continue;
+			Path __Path = GitDirTarget.GetRepoRootPath().resolve(__Paths.get(0));
+
+			// Staged entry: X is A/M/D and not untracked
+			if (__X != ' ' && __X != '?')
+			{
+				EFileChangeStatus __Status = MapPorcelainStatus(__X);
+				if (__Status != null)
+					_Target.add(new FileChange(__Path, __Status, EFileChangeScope.STAGED, GitDirTarget));
+			}
+
+			// Unstaged entry: Y is M/D (not space, not ?)
+			if (__Y != ' ' && __Y != '?')
+			{
+				EFileChangeStatus __Status = MapPorcelainStatus(__Y);
+				if (__Status != null)
+					_Target.add(new FileChange(__Path, __Status, EFileChangeScope.UNSTAGED, GitDirTarget));
+			}
+
+			// Untracked: both X and Y are '?'
+			if (__X == '?' && __Y == '?')
+			{
+				_Target.add(new FileChange(__Path, EFileChangeStatus.Added, EFileChangeScope.UNSTAGED, GitDirTarget));
+			}
 		}
+	}
+
+	/**
+	 * Adds a regular porcelain status when that status represents a file change.
+	 * Spaces, untracked markers, and unsupported status codes produce no entry.
+	 */
+	private void AddPorcelainChange(List<FileChange> _Target, Path _Path, char _StatusCharacter, EFileChangeScope _Scope)
+	{
+		if (_StatusCharacter == ' ' || _StatusCharacter == '?')
+			return;
+
+		EFileChangeStatus __Status = MapPorcelainStatus(_StatusCharacter);
+		if (__Status != null)
+			_Target.add(new FileChange(_Path, __Status, _Scope, GitDirTarget));
+	}
+
+	/**
+	 * Represents a rename as an old-path removal and a new-path addition.
+	 */
+	private void AddRenameChanges(List<FileChange> _Target, Path _OldPath, Path _NewPath, EFileChangeScope _Scope)
+	{
+		_Target.add(new FileChange(_OldPath, EFileChangeStatus.Removed, _Scope, GitDirTarget));
+		_Target.add(new FileChange(_NewPath, EFileChangeStatus.Added, _Scope, GitDirTarget));
+	}
+
+	/**
+	 * Normalize a porcelain path while preserving spaces within rename operands.
+	 * <p>
+	 * Git may quote the complete {@code old -> new} value when either path needs
+	 * quoting; split that form before removing quotes so the separator cannot be
+	 * confused with text in a path. Accept the unquoted form as a fallback.
+	 *
+	 * @param _RawPath raw path portion after the two-column status
+	 * @param _Rename  whether Git may have emitted an old and new path
+	 * @return one normalized path, or both paths in old-to-new order for a rename
+	 */
+	private static List<String> ParsePorcelainPaths(String _RawPath, boolean _Rename)
+	{
+		String __Path = _RawPath.trim();
+		if (!_Rename)
+			return List.of(__Path.replace("\\\"", "").replace('\\', '/'));
+
+		if (__Path.startsWith("\"") && __Path.endsWith("\"") && __Path.contains("\" -> \""))
+		{
+			int __Separator = __Path.indexOf("\" -> \"");
+			return List.of(__Path.substring(1, __Separator).replace('\\', '/'), __Path.substring(__Separator + 7, __Path.length() - 1).replace('\\', '/'));
+		}
+
+		int __Separator = __Path.indexOf(" -> ");
+		if (__Separator >= 0)
+			return List.of(__Path.substring(0, __Separator).replace("\"", "").replace('\\', '/'), __Path.substring(__Separator + 4).replace("\"", "").replace('\\', '/'));
+		return List.of();
+	}
+
+	/**
+	 * Maps a single porcelain status character to an {@link EFileChangeStatus}.
+	 *
+	 * @param _Char the X or Y status character from {@code git status --porcelain}
+	 * @return the matching status, or null for unhandled codes ({@code C}opy,
+	 * {@code U}nmerged, {@code .} unmodified)
+	 */
+	private static EFileChangeStatus MapPorcelainStatus(char _Char)
+	{
+		return switch (_Char)
+		{
+			case 'A' -> EFileChangeStatus.Added;
+			case 'M' -> EFileChangeStatus.Modified;
+			case 'D' -> EFileChangeStatus.Removed;
+			default -> null;
+		};
 	}
 
 	// ---------------------------------------------------------------------------

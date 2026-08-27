@@ -31,12 +31,13 @@ import java.util.Set;
  * or a persistent section header ("Staged"/"Unstaged"). Header rows carry no
  * FileChange and are never selectable; file entries route their stage toggle
  * to the owning ChangesWidget.
- */	class ChangeEntryWidget extends HBox implements IObject
-	{
-		private static final int SPACING = 10;
-		// Minimal vertical padding: ChangesWidget measures this row to pin the
-		// ListView cell size, so every px saved here shrinks the whole list.
-		private static final int PADDING = 2;
+ */
+class ChangeEntryWidget extends HBox implements IObject
+{
+	private static final int SPACING = 10;
+	// Minimal vertical padding: ChangesWidget measures this row to pin the
+	// ListView cell size, so every px saved here shrinks the whole list.
+	private static final int PADDING = 2;
 
 	private final ChangesWidget ChangesWidget;
 	private final FileChange FileChangeTarget;
@@ -110,7 +111,9 @@ import java.util.Set;
 		CommitCheckBox.setManaged(false);
 	}
 
-	/** @return true when the commit checkbox is ticked; header rows are never selected */
+	/**
+	 * @return true when the commit checkbox is ticked; header rows are never selected
+	 */
 	public boolean IsSelected()
 	{
 		return !IsHeader && CommitCheckBox.isSelected();
@@ -127,7 +130,9 @@ import java.util.Set;
 		return CommitCheckBox;
 	}
 
-	/** @return the file change backing this row, or null for a header row */
+	/**
+	 * @return the file change backing this row, or null for a header row
+	 */
 	public FileChange GetFileChange()
 	{
 		return FileChangeTarget;
@@ -168,7 +173,9 @@ public class ChangesWidget extends BaseWidget
 {
 	private static final int SPACING = 10;
 	private static final int PADDING = 5;
-	/** Fallback uniform row height (px) used if the sample measurement fails */
+	/**
+	 * Fallback uniform row height (px) used if the sample measurement fails
+	 */
 	private static final double DEFAULT_ROW_HEIGHT = 26.0;
 	/**
 	 * Extra height (px) added to the measured entry height to cover the default
@@ -186,7 +193,9 @@ public class ChangesWidget extends BaseWidget
 	 */
 	private final Set<CheckBox> PendingReenableCheckBoxes = new HashSet<>();
 
-	/** Persistent header widgets — reused across refreshes so a highlighted header keeps its highlight */
+	/**
+	 * Persistent header widgets — reused across refreshes so a highlighted header keeps its highlight
+	 */
 	private final ChangeEntryWidget StagedHeader = new ChangeEntryWidget("Staged");
 	private final ChangeEntryWidget UnstagedHeader = new ChangeEntryWidget("Unstaged");
 
@@ -218,12 +227,10 @@ public class ChangesWidget extends BaseWidget
 		{
 			if (__NewItem != null && !__NewItem.IsHeader)
 			{
-				Debug.Log(Debug.ChangesCategory, "[Changes] Selection -> ReadFileChange(%s)\n", __NewItem.GetFileChange().GetFilePath());
 				GetGitDirWidgetTarget().ReadFileChange(__NewItem.GetFileChange());
 			}
 			else
 			{
-				Debug.Log(Debug.ChangesCategory, "[Changes] Selection (header/none) -> ReadFileChange(null)\n");
 				GetGitDirWidgetTarget().ReadFileChange(null);
 			}
 		});
@@ -245,9 +252,7 @@ public class ChangesWidget extends BaseWidget
 	{
 		try
 		{
-			var __Sample = new ChangeEntryWidget(this, new FileChange(
-				GetGitDirTarget().GetRepoRootPath().resolve("__row_height_probe__"),
-				EFileChangeStatus.Modified, EFileChangeScope.UNSTAGED, GetGitDirTarget()));
+			var __Sample = new ChangeEntryWidget(this, new FileChange(GetGitDirTarget().GetRepoRootPath().resolve("__row_height_probe__"), EFileChangeStatus.Modified, EFileChangeScope.UNSTAGED, GetGitDirTarget()));
 			__Sample.applyCss();
 			double __Height = Math.ceil(__Sample.prefHeight(-1) + LIST_CELL_VERTICAL_PADDING);
 			// Sanity floor: a sub-20px measurement means the CSS probe failed to
@@ -262,7 +267,7 @@ public class ChangesWidget extends BaseWidget
 
 	/**
 	 * Rebuild the staged/unstaged entries from the current GitDir state.
-	 *
+	 * <p>
 	 * Surviving FileChanges keep their existing ChangeEntryWidget instances (so the
 	 * current selection and the diff viewer survive a refresh), each section is
 	 * re-sorted by path normalized to '/' to mirror git's ordering, and the new order
@@ -372,9 +377,7 @@ public class ChangesWidget extends BaseWidget
 			while (__NewIter.hasNext())
 			{
 				FileChange __NewFC = __NewIter.next();
-				if (__OldFC.GetFilePath().equals(__NewFC.GetFilePath())
-					&& __OldFC.GetScope() == __NewFC.GetScope()
-					&& __OldFC.GetStatus() == __NewFC.GetStatus())
+				if (__OldFC.GetFilePath().equals(__NewFC.GetFilePath()) && __OldFC.GetScope() == __NewFC.GetScope() && __OldFC.GetStatus() == __NewFC.GetStatus())
 				{
 					__NewIter.remove(); // matched; do not create new entry
 					__Found = true;
@@ -424,8 +427,8 @@ public class ChangesWidget extends BaseWidget
 	 * refresh reaching {@link #UpdateChanges()}, on failure right here in the
 	 * callback; on failure their selection is reverted and an error dialog shown.
 	 *
-	 * @param _Change          the file change to move between scopes
-	 * @param _ShouldBeStaged  true to stage, false to unstage
+	 * @param _Change         the file change to move between scopes
+	 * @param _ShouldBeStaged true to stage, false to unstage
 	 */
 	void ToggleStagedState(FileChange _Change, boolean _ShouldBeStaged)
 	{

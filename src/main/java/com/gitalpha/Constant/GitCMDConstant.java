@@ -20,6 +20,9 @@ public class GitCMDConstant
     public static List<String> Changed_Staged_Modified = List.of("diff", "--cached", "--name-only", "--diff-filter=M");
     public static List<String> Changed_Staged_Removed = List.of("diff", "--cached", "--name-only", "--diff-filter=D");
 
+    /** Single-call replacement for the seven Changed_* commands above */
+    public static List<String> Status_Porcelain = List.of("status", "--porcelain");
+
     public static List<String> Branches = List.of("branch", "-a");
     public static List<String> Checkout = List.of("checkout");
     public static List<String> Diff_Unstaged_File = List.of("diff");
