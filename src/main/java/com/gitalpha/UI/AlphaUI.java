@@ -1,12 +1,14 @@
 package com.gitalpha.UI;
 
 import com.gitalpha.Engine.AlphaEngine;
-import com.gitalpha.Engine.AlphaSettings;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Engine.GitDirContainer.ICloseGitDirEvent;
 import com.gitalpha.Engine.GitDirContainer.IOpenGitDirEvent;
 import com.gitalpha.Function.GitDirFunction;
 import com.gitalpha.UI.Components.ATabWidget;
+import com.gitalpha.UI.Components.INewTabRequestEvent;
+import com.gitalpha.UI.Components.ISubTabSelectionEvent;
+import com.gitalpha.UI.Components.ITabCloseEvent;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
 import javafx.scene.Node;
@@ -47,35 +49,37 @@ public class AlphaUI extends BorderPane
 		setTop(__TopChrome);
 
 		TabWidgetInstance = new ATabWidget(true);
-		// Apply the user-configured maximum tab face width from settings
-		TabWidgetInstance.SetTabMaxWidth(AlphaSettings.Get().GetSettingEntry(AlphaSettings.TabMaxSize).GetValue_AsInteger());
 		setCenter(TabWidgetInstance);
 
 		// Wire the widget events before adding tabs, so the auto-selection of
 		// the first AddTab already resolves through TabsByRoot.
+		// Each listener is stored as a strong field so the WeakReference
+		// inside ATabWidget does not allow GC to collect it.
 		// "+": create a fresh empty project tab and switch to it.
-		TabWidgetInstance.AddNewTabRequestEvent(() ->
+		NewTabRequestListener = () ->
 		{
 			GitDirTabButton __Tab = CreateProjectTab(null);
 			int __Index = TabWidgetInstance.IndexOf(__Tab.GetRoot());
 			if (__Index >= 0)
 				TabWidgetInstance.SelectTab(__Index);
-		});
+		};
+		TabWidgetInstance.AddNewTabRequestEvent(NewTabRequestListener);
 		// Close face: route back to the owning tab object (dispose project,
 		// unbind and close the repository). The tab is already removed here.
 		// Closing the selected last tab clears the content without firing a
 		// selection event, so drop the stale root reference explicitly.
-		TabWidgetInstance.AddTabCloseEvent((_Index, _Content) ->
+		TabCloseListener = (_Index, _Content) ->
 		{
 			if (SelectedRoot == _Content)
 				SelectedRoot = null;
 			GitDirTabButton __Tab = TabsByRoot.remove(_Content);
 			if (__Tab != null)
 				__Tab.OnClosed();
-		});
+		};
+		TabWidgetInstance.AddTabCloseEvent(TabCloseListener);
 		// Selection: broadcast a refresh for the newly shown project (empty
 		// "New Tab" selections only update SelectedRoot).
-		TabWidgetInstance.AddSelectionEvent((_Index, _Content) ->
+		SelectionListener = (_Index, _Content) ->
 		{
 			SelectedRoot = _Content;
 			GitDirTabButton __Tab = TabsByRoot.get(_Content);
@@ -83,7 +87,8 @@ public class AlphaUI extends BorderPane
 			{
 				AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("project-tab-selected", __Tab.GetGitDirTarget());
 			}
-		});
+		};
+		TabWidgetInstance.AddSelectionEvent(SelectionListener);
 
 		InitialTab = CreateProjectTab(null); // first AddTab is auto-selected
 
@@ -113,8 +118,16 @@ public class AlphaUI extends BorderPane
 	private Node SelectedRoot;
 	/** The empty tab created at startup; reused for the first restored project */
 	private final GitDirTabButton InitialTab;
+	/** Strong reference to the open-project event handler; prevents WeakReference GC by the engine */
 	private final IOpenGitDirEvent OpenGitDirEventListener;
+	/** Strong reference to the close-project event handler; prevents WeakReference GC by the engine */
 	private final ICloseGitDirEvent CloseGitDirEventListener;
+	/** Strong reference to the tab "+" handler; prevents WeakReference GC by the widget */
+	private final INewTabRequestEvent NewTabRequestListener;
+	/** Strong reference to the tab "×" close handler; prevents WeakReference GC by the widget */
+	private final ITabCloseEvent TabCloseListener;
+	/** Strong reference to the tab selection handler; prevents WeakReference GC by the widget */
+	private final ISubTabSelectionEvent SelectionListener;
 
 	private final Map<Path, GitDirTabButton> OpenTabsByProjectPath;
 
