@@ -154,14 +154,12 @@ Items that were discussed and have been committed to `master`.
 - [x] **Draggable tab reorder** — `ATabWidget` supports live drag-to-reorder in
       modifiable mode; event handlers resolve indexes via `indexOf` at invocation so
       closures survive reorders (`2773f06`)
-
-### Implemented, awaiting commit
-
-- [ ] **Deprecated tab-pane chain removed** — `ATabPane`, `ASubTabPane`, `TabPaneSkin`
+- [x] **Deprecated tab-pane chain removed** — `ATabPane`, `ASubTabPane`, `TabPaneSkin`
       and `ThemeManager.GetTabPaneStylesheets()` deleted (the whole `forRemoval`
       chain from the migration above); dangling javadoc references cleaned in
       `SubTabButtonSkin`, `ATabWidget`, `ISubTabSelectionEvent`; `AGENTS.md` updated
-- [ ] **Tab skin rename + size variants** — `SubTabButtonSkin` renamed to `TabButtonSkin`
+      (`22913d4`)
+- [x] **Tab skin rename + size variants** — `SubTabButtonSkin` renamed to `TabButtonSkin`
       (`GetSubTabButtonStylesheets()` → `GetTabButtonStylesheets(variant)`); new
       `ETabButtonVariant` (`NORMAL`/`SMALL`, Type package) picks the baked face
       metrics via a token-resolved CSS template (colors shared, only padding/
@@ -170,7 +168,11 @@ Items that were discussed and have been committed to `master`.
       constructor parameter and bakes its strip's sheet at that variant;
       `ATabButton` no longer attaches a stylesheet of its own (a node-level sheet
       would outrank the ancestor cascade and force main-tab metrics onto × faces
-      in small strips)
+      in small strips) (`22913d4`)
+- [x] **Fix ATabWidget listener GC** — three `ATabWidget` event listener lambdas
+      (new-tab-request, tab-close, selection) stored as `final` fields in `AlphaUI`
+      to prevent `WeakReference` GC collection; `TabMaxSize` settings application
+      moved into `ATabWidget` constructor (`dd3366c`)
 
 ---
 
