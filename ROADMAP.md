@@ -173,20 +173,17 @@ Items that were discussed and have been committed to `master`.
       (new-tab-request, tab-close, selection) stored as `final` fields in `AlphaUI`
       to prevent `WeakReference` GC collection; `TabMaxSize` settings application
       moved into `ATabWidget` constructor (`dd3366c`)
-
-### Implemented, awaiting commit
-
-- [ ] **Porcelain-based change collection** — the refresh pipeline's seven-command change
+- [x] **Porcelain-based change collection** — the refresh pipeline's seven-command change
       collection (`CollectChangesByScope` × 3 statuses × 2 scopes + untracked) replaced with a
       single `git status --porcelain` call (`CollectChangesFromPorcelain`); renames (`R` status)
       are parsed from the `old → new` path syntax and represented as paired add/remove entries;
       index and worktree columns are processed independently so cross-column statuses (e.g. `RD`)
       are not lost; `GitCMDConstant.Status_Porcelain` added
-- [ ] **Batch refresh not suppressed by failed operations** — `ProcessResults` now always attempts
+- [x] **Batch refresh not suppressed by failed operations** — `ProcessResults` now always attempts
       a pending refresh even when another operation in the same batch failed; the failure is
       reported through that operation's callback while the refresh keeps `GitDir` state current;
       `RunGitOp` javadoc updated to reflect the new semantics
-- [ ] **Comment and formatting cleanup** — `AlphaEngine` single-line Javadoc comments expanded to
+- [x] **Comment and formatting cleanup** — `AlphaEngine` single-line Javadoc comments expanded to
       multi-line format; `ChangesWidget` `ChangeEntryWidget` indentation fixed, debug `Log` calls
       removed; no functional changes
 
