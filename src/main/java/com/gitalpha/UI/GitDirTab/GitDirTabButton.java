@@ -82,7 +82,9 @@ public class GitDirTabButton implements IObject
 	/**
 	 * Open the given repository in this tab: dispose any previous project,
 	 * host a fresh {@link GitDirWidget} inside the stable root and bind the
-	 * tab to the engine.
+	 * tab to the engine. The watcher is started after the widget is wired
+	 * so the initial callback fires on the next debounced refresh, not
+	 * before the UI is ready to consume it.
 	 */
 	public void OpenProject(GitDir _GitDir)
 	{
@@ -104,6 +106,10 @@ public class GitDirTabButton implements IObject
 			ProjectManagerInstance = new GitDirWidget(this, __Dir);
 			Root.getChildren().setAll(ProjectManagerInstance);
 			AlphaUIInstance.BindOpenProjectTab(__Dir, this);
+			// Start the filesystem watcher only after the widget is wired and
+			// registered — the debounced callback fires
+			// AttemptSaveAndBroadcastRefresh which drives UI rebuilds.
+			__Dir.StartWatching();
 		});
 	}
 

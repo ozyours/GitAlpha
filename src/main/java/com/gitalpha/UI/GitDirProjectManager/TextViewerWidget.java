@@ -1,7 +1,9 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
+import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.Debug;
 import com.gitalpha.Engine.GitDir;
+import com.gitalpha.Engine.GitDirContainer.IScannedFilesUpdatedEvent;
 import com.gitalpha.Type.ETextVariant;
 import com.gitalpha.Type.FileChange;
 import com.gitalpha.UI.Components.AListView;
@@ -169,6 +171,14 @@ public class TextViewerWidget extends BaseWidget
 	 * ForkJoinPool thread (stale-response checks).
 	 */
 	private volatile FileChange FileChangeTarget = null;
+	/**
+	 * Listener that re-renders the current diff when its {@link FileChange} is
+	 * among the preserved entries whose scan timestamp was refreshed. Held
+	 * strongly so the engine's weak reference stays alive as long as this
+	 * widget does; no explicit removal needed (pruned on broadcast once this
+	 * widget is collected).
+	 */
+	private final IScannedFilesUpdatedEvent ScannedFilesUpdatedEventListener;
 	/** Format string (with padding) for line numbers, matching the widest number in the current diff */
 	private String NumFormat = "%d";
 	/** Blank placeholder with the same width as the widest line number */
@@ -276,6 +286,26 @@ public class TextViewerWidget extends BaseWidget
 		OverlayPane.setPickOnBounds(false);
 		HideOverlay();
 		getChildren().add(OverlayPane);
+
+		// Re-render only when a refresh scan re-observes the displayed FileChange
+		// (its scan timestamp was advanced); ignoring unrelated files keeps their
+		// pan/scroll state intact. The broadcast fires on the operator runner
+		// thread so the membership check runs there and the reload on the FX
+		// thread, re-checked there in case the selection moved in between.
+		// Identity match is sufficient: the broadcast carries the preserved
+		// instances, and raw-diff viewers (FileChangeTarget == null) never match.
+		ScannedFilesUpdatedEventListener = (_UpdatedFiles) ->
+		{
+			FileChange __Current = FileChangeTarget;
+			if (__Current == null || _UpdatedFiles == null || !_UpdatedFiles.contains(__Current))
+				return;
+			Platform.runLater(() ->
+			{
+				if (FileChangeTarget == __Current)
+					SetFileChange(__Current);
+			});
+		};
+		AlphaEngine.Instance.AddIScannedFilesUpdatedEvent(ScannedFilesUpdatedEventListener);
 	}
 
 	// ------------------------------------------------------------------

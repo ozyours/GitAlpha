@@ -11,7 +11,10 @@ import javafx.util.Pair;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.ref.WeakReference;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -497,6 +500,22 @@ public class GitOperator implements AutoCloseable
 		// ── Step 3: diff-merge with existing changed files ──
 		DiffMergeChanges(__NewChanges);
 
+		// ── Step 3b: broadcast scanned-file updates ──
+		var __Updates = GitDirTarget.GetScannedUpdates();
+		if (!__Updates.isEmpty())
+		{
+			var __Dereferenced = new ArrayList<FileChange>();
+			for (var __Ref : __Updates)
+			{
+				var __FC = __Ref.get();
+				if (__FC != null)
+					__Dereferenced.add(__FC);
+			}
+			if (!__Dereferenced.isEmpty())
+				Engine.BroadcastIScannedFilesUpdatedEvent(__Dereferenced);
+			__Updates.clear();
+		}
+
 		// ── Step 4: save session and broadcast if the policy requires it ──
 		if (PendingPolicy == ERefreshPolicy.REFRESH_AND_UPDATE_UI)
 		{
@@ -670,7 +689,7 @@ public class GitOperator implements AutoCloseable
 			{
 				EFileChangeStatus __Status = MapPorcelainStatus(__X);
 				if (__Status != null)
-					_Target.add(new FileChange(__Path, __Status, EFileChangeScope.STAGED, GitDirTarget));
+					AddChange(_Target, __Path, __Status, EFileChangeScope.STAGED);
 			}
 
 			// Unstaged entry: Y is M/D (not space, not ?)
@@ -678,20 +697,50 @@ public class GitOperator implements AutoCloseable
 			{
 				EFileChangeStatus __Status = MapPorcelainStatus(__Y);
 				if (__Status != null)
-					_Target.add(new FileChange(__Path, __Status, EFileChangeScope.UNSTAGED, GitDirTarget));
+					AddChange(_Target, __Path, __Status, EFileChangeScope.UNSTAGED);
 			}
 
 			// Untracked: both X and Y are '?'
 			if (__X == '?' && __Y == '?')
 			{
-				_Target.add(new FileChange(__Path, EFileChangeStatus.Added, EFileChangeScope.UNSTAGED, GitDirTarget));
+				AddChange(_Target, __Path, EFileChangeStatus.Added, EFileChangeScope.UNSTAGED);
 			}
 		}
 	}
 
 	/**
+	 * Creates a {@link FileChange}, captures the file's current mtime as the scanned
+	 * mtime (for cache invalidation in the diff viewer), and appends it to the target
+	 * list. The scanned mtime is left null if the file cannot be stat'd (e.g. deleted
+	 * between {@code git status} and this call).
+	 *
+	 * @param _Target list to append the new entry to
+	 * @param _Path   absolute path to the changed file
+	 * @param _Status the change type (added / modified / removed)
+	 * @param _Scope  staged or unstaged
+	 */
+	private void AddChange(List<FileChange> _Target, Path _Path, EFileChangeStatus _Status, EFileChangeScope _Scope)
+	{
+		var __FC = new FileChange(_Path, _Status, _Scope, GitDirTarget);
+		try
+		{
+			__FC.SetScannedModified(Files.getLastModifiedTime(_Path));
+		}
+		catch (IOException __Ex)
+		{
+			// File may have been deleted between status scan and mtime capture; leave as null.
+		}
+		_Target.add(__FC);
+	}
+
+	/**
 	 * Adds a regular porcelain status when that status represents a file change.
 	 * Spaces, untracked markers, and unsupported status codes produce no entry.
+	 *
+	 * @param _Target          list to append the entry to
+	 * @param _Path            absolute path to the changed file
+	 * @param _StatusCharacter X or Y status character from {@code git status --porcelain}
+	 * @param _Scope           staged or unstaged
 	 */
 	private void AddPorcelainChange(List<FileChange> _Target, Path _Path, char _StatusCharacter, EFileChangeScope _Scope)
 	{
@@ -700,16 +749,23 @@ public class GitOperator implements AutoCloseable
 
 		EFileChangeStatus __Status = MapPorcelainStatus(_StatusCharacter);
 		if (__Status != null)
-			_Target.add(new FileChange(_Path, __Status, _Scope, GitDirTarget));
+			AddChange(_Target, _Path, __Status, _Scope);
 	}
 
 	/**
-	 * Represents a rename as an old-path removal and a new-path addition.
+	 * Decomposes a git rename into two separate entries: a removal of the old path
+	 * and an addition of the new path. Git's porcelain reports renames as a single
+	 * record, but the UI treats them as independent file changes.
+	 *
+	 * @param _Target  list to append the entries to
+	 * @param _OldPath path before the rename
+	 * @param _NewPath path after the rename
+	 * @param _Scope   staged or unstaged
 	 */
 	private void AddRenameChanges(List<FileChange> _Target, Path _OldPath, Path _NewPath, EFileChangeScope _Scope)
 	{
-		_Target.add(new FileChange(_OldPath, EFileChangeStatus.Removed, _Scope, GitDirTarget));
-		_Target.add(new FileChange(_NewPath, EFileChangeStatus.Added, _Scope, GitDirTarget));
+		AddChange(_Target, _OldPath, EFileChangeStatus.Removed, _Scope);
+		AddChange(_Target, _NewPath, EFileChangeStatus.Added, _Scope);
 	}
 
 	/**
@@ -770,10 +826,17 @@ public class GitOperator implements AutoCloseable
 	 * (path, scope, status) still exists, retaining their cached diffs.
 	 * Entries that no longer exist are removed.
 	 * Genuinely new entries (not found in the old list) are appended.
+	 * <p>
+	 * For a preserved entry, the file mtime observed by <em>this</em> refresh is
+	 * carried onto it via {@code SetScannedModified}. A kept entry would otherwise
+	 * retain the previous scan's "last-seen" mtime, so this keeps the scan
+	 * timestamp current for downstream cache/staleness logic that keys off it.
 	 */
 	private void DiffMergeChanges(List<FileChange> _NewChanges)
 	{
 		var __ExistingList = GitDirTarget.GetChangedFiles();
+		var __ScannedUpdates = GitDirTarget.GetScannedUpdates();
+		__ScannedUpdates.clear();
 
 		// Mark-and-sweep: match existing entries against new ones.
 		var __ExistingIter = __ExistingList.iterator();
@@ -786,8 +849,20 @@ public class GitOperator implements AutoCloseable
 			while (__NewIter.hasNext())
 			{
 				var __New = __NewIter.next();
-				if (__Existing.GetFilePath().equals(__New.GetFilePath()) && __Existing.GetScope() == __New.GetScope() && __Existing.GetStatus() == __New.GetStatus())
+				boolean __NewFound = false;
+				if (__Existing.GetScannedModified() == null || __New.GetScannedModified() == null)
+					__NewFound = true;
+				else
+					__NewFound = !__Existing.GetScannedModified().equals(__New.GetScannedModified());
+				if (__Existing.GetFilePath().equals(__New.GetFilePath()) && __Existing.GetScope() == __New.GetScope() && __Existing.GetStatus() == __New.GetStatus() && __NewFound)
 				{
+					// Carry the fresh scan mtime onto the preserved entry. Without this,
+					// a kept FileChange retains the previous refresh's "last-seen" mtime,
+					// so advance it to this scan's observation. The scan timestamp must stay
+					// current because the diff cache/staleness checks key off the scan
+					// mtime: a frozen value would mask that the file was re-observed this pass.
+					__Existing.SetScannedModified(__New.GetScannedModified());
+					__ScannedUpdates.add(new WeakReference<>(__Existing));
 					__NewIter.remove(); // matched; do not add as new
 					__Found = true;
 					break;

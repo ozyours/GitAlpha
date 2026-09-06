@@ -2,6 +2,7 @@ package com.gitalpha.Engine;
 
 import com.gitalpha.Engine.GitDirContainer.*;
 import com.gitalpha.Function.GitDirFunction;
+import com.gitalpha.Type.FileChange;
 import com.gitalpha.Type.StashWindowState;
 import org.json.JSONObject;
 
@@ -88,6 +89,11 @@ public class AlphaEngine
 	 * Weak event listeners notified when a repository refreshes (pruned on dead refs)
 	 */
 	private final List<WeakReference<IRefreshGitDirEvent>> RefreshGitDirEventList = new ArrayList<>();
+	/**
+	 * Weak event listeners notified when existing FileChange entries had their
+	 * scanned mtime updated during a refresh (pruned on dead refs)
+	 */
+	private final List<WeakReference<IScannedFilesUpdatedEvent>> ScannedFilesUpdatedEventList = new ArrayList<>();
 	/**
 	 * Session file location: ~/.gitalpha/session.json
 	 */
@@ -246,8 +252,10 @@ public class AlphaEngine
 	}
 
 	/**
-	 * Closes a repository: removes it from the open list and broadcasts the
-	 * close event. No-op if the path is not currently open.
+	 * Closes a repository: removes it from the open list, stops the
+	 * filesystem watcher and broadcasts the close event. The watcher must
+	 * be stopped before the broadcast so no stale callback reaches the UI
+	 * after the tab is disposed. No-op if the path is not currently open.
 	 *
 	 * @param _ProjectPath the repository path to close
 	 */
@@ -262,6 +270,10 @@ public class AlphaEngine
 		if (__Index >= 0)
 		{
 			var __GitDir = OpenGitDirList.GetGitDirs().remove(__Index);
+			// Release OS watch handles before broadcasting the close event;
+			// the watcher's debounced callback may still be pending on the
+			// debounce timer — Stop cancels the timer first.
+			__GitDir.StopWatching();
 			BroadcastICloseGitDirEvent(__GitDir);
 		}
 	}
@@ -507,6 +519,31 @@ public class AlphaEngine
 	}
 
 	/**
+	 * Registers a scanned-files-updated listener (held weakly; no unsubscribe required)
+	 */
+	public void AddIScannedFilesUpdatedEvent(IScannedFilesUpdatedEvent _Event)
+	{
+		ScannedFilesUpdatedEventList.add(new WeakReference<>(_Event));
+	}
+
+	/**
+	 * Unregisters a scanned-files-updated listener (optional — dead references are pruned on broadcast)
+	 */
+	public void RemoveIScannedFilesUpdatedEvent(IScannedFilesUpdatedEvent _Event)
+	{
+		int i = 0;
+		while (i < ScannedFilesUpdatedEventList.size())
+		{
+			if (Objects.equals(ScannedFilesUpdatedEventList.get(i).get(), _Event))
+			{
+				ScannedFilesUpdatedEventList.remove(i);
+				break;
+			}
+			i++;
+		}
+	}
+
+	/**
 	 * Saves the session and broadcasts a refresh event — the single entry point
 	 * UI code calls when something user-visible changed (window focus in/out,
 	 * tab selection).
@@ -601,6 +638,27 @@ public class AlphaEngine
 			else
 			{
 				RefreshGitDirEventList.remove(i);
+			}
+		}
+	}
+
+	/**
+	 * Notifies every live scanned-files-updated listener, pruning dead weak references inline
+	 */
+	public void BroadcastIScannedFilesUpdatedEvent(List<FileChange> _UpdatedFiles)
+	{
+		int i = 0;
+		while (i < ScannedFilesUpdatedEventList.size())
+		{
+			var e = ScannedFilesUpdatedEventList.get(i);
+			if (e.get() != null)
+			{
+				e.get().Event(_UpdatedFiles);
+				i++;
+			}
+			else
+			{
+				ScannedFilesUpdatedEventList.remove(i);
 			}
 		}
 	}

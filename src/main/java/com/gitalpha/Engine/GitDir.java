@@ -7,6 +7,7 @@ import javafx.util.Pair;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +24,8 @@ public class GitDir implements ISerializable
 	public GitDir()
 	{
 		GitDirPath = null;
+		Watcher = new GitWatcher(this, () ->
+			AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("file-watcher", this));
 	}
 
 	/**
@@ -33,6 +36,8 @@ public class GitDir implements ISerializable
 	public GitDir(Path GitDirPath)
 	{
 		this.GitDirPath = GitDirPath;
+		Watcher = new GitWatcher(this, () ->
+			AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("file-watcher", this));
 	}
 
 	/** Path to the .git directory */
@@ -40,6 +45,14 @@ public class GitDir implements ISerializable
 
 	/** Accumulated file changes detected during the last refresh */
 	private final List<FileChange> ChangedFiles = new ArrayList<>();
+	/**
+	 * Weak references to FileChange entries whose {@code ScannedModified} was
+	 * updated during the most recent diff-merge. Accumulated by
+	 * {@link com.gitalpha.Engine.GitOperator#DiffMergeChanges} and broadcast
+	 * via {@link AlphaEngine#BroadcastIScannedFilesUpdatedEvent} after refresh.
+	 * Cleared at the start of each refresh cycle.
+	 */
+	private final List<WeakReference<FileChange>> ScannedUpdates = new ArrayList<>();
 	/** All branches (local + remote) parsed from `git branch -a` */
 	private final List<GitBranch> Branches = new ArrayList<>();
 	/**
@@ -63,6 +76,13 @@ public class GitDir implements ISerializable
 	 * {@link #Operator} and runs read-only stash queries synchronously.
 	 */
 	private final GitStashOperator StashOperator = new GitStashOperator(this);
+
+	/**
+	 * Filesystem watcher that monitors the working tree for changes and
+	 * triggers a debounced refresh. Created in the constructor; lifecycle
+	 * managed via {@link #StartWatching()} and {@link #StopWatching()}.
+	 */
+	private final GitWatcher Watcher;
 
 	/** @return the stored .git directory path */
 	public Path GetGitDirPath()
@@ -106,6 +126,23 @@ public class GitDir implements ISerializable
 		return ChangedFiles;
 	}
 
+	/**
+	 * @return weak references to FileChange entries whose scanned mtime was updated in the last refresh
+	 */
+	public List<WeakReference<FileChange>> GetScannedUpdates()
+	{
+		return ScannedUpdates;
+	}
+
+	/**
+	 * Clears the scanned-updates accumulator. Called at the start of each
+	 * refresh cycle before diff-merge repopulates it.
+	 */
+	void ClearScannedUpdates()
+	{
+		ScannedUpdates.clear();
+	}
+
 	/** @return list of all known branches (local and remote) */
 	public List<GitBranch> GetBranches()
 	{
@@ -144,6 +181,34 @@ public class GitDir implements ISerializable
 	public GitStashOperator GetStashOperator()
 	{
 		return StashOperator;
+	}
+
+	/**
+	 * @return the {@link GitWatcher} that monitors the working tree for changes
+	 */
+	public GitWatcher GetWatcher()
+	{
+		return Watcher;
+	}
+
+	/**
+	 * Start watching the working tree for filesystem changes. When changes are
+	 * detected, a debounced refresh is triggered via
+	 * {@link AlphaEngine#AttemptSaveAndBroadcastRefresh}.
+	 * No-op if the root path is invalid (e.g. default-constructed GitDir).
+	 */
+	public void StartWatching()
+	{
+		Watcher.Start();
+	}
+
+	/**
+	 * Stop watching the working tree and release all OS resources.
+	 * Safe to call multiple times.
+	 */
+	public void StopWatching()
+	{
+		Watcher.Stop();
 	}
 
 	/**
