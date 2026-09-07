@@ -16,8 +16,8 @@ import com.gitalpha.Theme.ColorPalette;
  * Unlike the per-element skins this class is a composition, not a single
  * format: it concatenates the focus-ring kill, the palette's dynamic
  * {@code -gitalpha-*} CSS variables from {@link ColorPalette#GetCssOverrides}
- * and the two popup skins (combo box + context menu). The popups render in
- * their own scenes that node-level skins cannot reach, but inherit this scene
+ * and the popup skins (combo box + context menu). Popups render in their own
+ * scenes that node-level skins cannot reach, but inherit this scene
  * stylesheet, so their rules resolve the scene's variables — the only way to
  * theme them. Consequently {@link #Bake} is overridden instead of filling
  * placeholders, and the abstract hooks return the focus ring fragment / no
@@ -61,20 +61,27 @@ public final class BaseSkin extends ThemeSkin
 			}
 			.combo-box-popup > .list-view > .virtual-flow > .clipped-container > .sheet > .list-cell:selected {
 			    -fx-background-color: -gitalpha-active-highlight;
-			    -fx-text-fill: #ffffff;
+			    -fx-text-fill: -gitalpha-text-alternate;
 			}
 			""";
 
 	/**
-	 * The context-menu popup skin (menu bars and right-click menus): palette
-	 * background with a border hairline and rounded corners, palette text on
-	 * the items, a passive-highlight (hover) row, an accent focus ring on the
-	 * focused item, and a border hairline on separators. Like the combo-box
-	 * popup it renders in its own scene that node-level skins cannot reach, so
-	 * it is baked here with the scene's variables.
+	 * The context-menu popup skin: palette background with a border hairline and
+	 * rounded corners, palette text on the items, a passive-highlight (hover)
+	 * row with alternate text, a primary focus ring on the focused item, and a
+	 * border hairline on separators. Disabled items use the muted text color.
+	 * <p>
+	 * Targets the {@code .a-context-menu} class added by
+	 * {@link com.gitalpha.UI.Components.AContextMenu} and by
+	 * {@link com.gitalpha.UI.Components.ATopMenuBar} on each Menu's internal
+	 * popup, so only themed context menus (right-click + menu-bar drop-downs)
+	 * inherit the palette; unstyled menus keep the Modena default.
+	 * <p>
+	 * Selector mirrors Modena's full {@code .context-menu .menu-item} path so
+	 * the palette values win the cascade at equal specificity.
 	 */
-	private static final String CONTEXT_MENU_POPUP_CSS_FORMAT = """
-			.context-menu {
+	private static final String CONTEXT_MENU_CSS_FORMAT = """
+			.a-context-menu {
 			    -fx-background-color: -gitalpha-background;
 			    -fx-background-insets: 0;
 			    -fx-background-radius: 4;
@@ -83,23 +90,27 @@ public final class BaseSkin extends ThemeSkin
 			    -fx-border-radius: 4;
 			    -fx-padding: 4 0 4 0;
 			}
-			.context-menu > .separator > .line {
+			.a-context-menu > .separator > .line {
 			    -fx-border-color: -gitalpha-border;
 			    -fx-border-width: 1 0 0 0;
 			}
-			.context-menu .menu-item {
+			.a-context-menu .menu-item {
 			    -fx-background-color: transparent;
 			    -fx-padding: 4 10 4 10;
 			}
-			.context-menu .menu-item > .label {
+			.a-context-menu .menu-item > .label {
 			    -fx-text-fill: -gitalpha-text;
 			    -fx-font-size: 12px;
 			}
-			.context-menu .menu-item:hover {
+			.a-context-menu .menu-item:disabled > .label {
+			    -fx-text-fill: -gitalpha-muted-text;
+			}
+			.a-context-menu .menu-item:hover {
 			    -fx-background-color: -gitalpha-passive-highlight;
 			}
-			.context-menu .menu-item:focused {
+			.a-context-menu .menu-item:focused {
 			    -fx-background-color: -gitalpha-passive-highlight;
+			    -fx-text-fill: -gitalpha-text-alternate;
 			    -fx-border-color: -gitalpha-primary;
 			    -fx-border-width: 1;
 			    -fx-border-radius: 3;
@@ -129,8 +140,8 @@ public final class BaseSkin extends ThemeSkin
 
 	/**
 	 * Bake the scene base stylesheet: the focus-ring kill plus the palette's
-	 * {@code -gitalpha-*} CSS variables and the combo-box + context-menu popup
-	 * skins.
+	 * {@code -gitalpha-*} CSS variables, the combo-box popup skin and the
+	 * context-menu popup skin.
 	 *
 	 * @param _Palette the palette whose CSS variables are inlined
 	 * @return the data-URI stylesheet URL
@@ -138,7 +149,8 @@ public final class BaseSkin extends ThemeSkin
 	@Override
 	public String Bake(ColorPalette _Palette)
 	{
-		String __Css = CSS_FORMAT + "\n" + _Palette.GetCssOverrides() + COMBO_BOX_POPUP_CSS_FORMAT + CONTEXT_MENU_POPUP_CSS_FORMAT;
+		String __Css = CSS_FORMAT + "\n" + _Palette.GetCssOverrides()
+				+ COMBO_BOX_POPUP_CSS_FORMAT + CONTEXT_MENU_CSS_FORMAT;
 		return ToDataUri(__Css);
 	}
 }

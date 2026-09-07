@@ -9,6 +9,7 @@ module com.gitalpha
     requires javafx.base;
     requires javafx.controls;
     requires javafx.graphics;
+    requires java.desktop;
     
     opens com.gitalpha to javafx.graphics;
     opens com.gitalpha.UI to javafx.graphics;
@@ -24,6 +25,7 @@ module com.gitalpha
     exports com.gitalpha.Engine.GitDirContainer;
     exports com.gitalpha.Type;
     exports com.gitalpha.UI;
+    exports com.gitalpha.UI.Components;
     exports com.gitalpha.UI.GitDirTab;
     exports com.gitalpha.UI.GitDirEntryUI;
     opens com.gitalpha.UI.GitDirEntryUI to javafx.graphics;

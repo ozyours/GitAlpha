@@ -11,6 +11,7 @@ import com.gitalpha.UI.Components.AListView;
 import com.gitalpha.UI.Components.AText;
 import com.gitalpha.Type.ETextVariant;
 import com.gitalpha.Theme.ThemeManager;
+import com.gitalpha.UI.Components.AContextMenu;
 import com.gitalpha.UI.IObject;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -19,6 +20,9 @@ import javafx.scene.layout.*;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 
+import java.awt.Desktop;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -82,6 +86,35 @@ class ChangeEntryWidget extends HBox implements IObject
 
 		// Add components to the entry
 		getChildren().addAll(CommitCheckBox, statusText, pathFlow);
+
+		// Right-click context menu: offers Discard (move to trash or revert),
+		// Open Directory (highlight the file in the system explorer), and
+		// Ignore (add to .gitignore).  Each action runs synchronously or
+		// through the operator queue and then refreshes the UI so the list
+		// reflects the new state immediately.  The menu is transient — built
+		// fresh per invocation so it always reflects the current scope.
+		setOnContextMenuRequested(__Event ->
+		{
+			AContextMenu __Menu = new AContextMenu();
+
+			MenuItem __DiscardItem = new MenuItem("Discard Change");
+			__DiscardItem.setOnAction(__E -> DiscardChange());
+
+			MenuItem __OpenDirItem = new MenuItem("Open Directory");
+			__OpenDirItem.setOnAction(__E -> OpenDirectory());
+
+			SeparatorMenuItem __Separator1 = new SeparatorMenuItem();
+
+			MenuItem __IgnoreItem = new MenuItem("Ignore File");
+			__IgnoreItem.setOnAction(__E -> IgnoreFile());
+
+			MenuItem __IgnoreAdvItem = new MenuItem("Ignore File (Advanced)");
+			__IgnoreAdvItem.setOnAction(__E -> IgnoreFileAdvanced());
+
+			__Menu.getItems().addAll(__DiscardItem, __OpenDirItem, __Separator1, __IgnoreItem, __IgnoreAdvItem);
+			__Menu.show(this, __Event.getScreenX(), __Event.getScreenY());
+			__Event.consume();
+		});
 	}
 
 	/**
@@ -136,6 +169,173 @@ class ChangeEntryWidget extends HBox implements IObject
 	public FileChange GetFileChange()
 	{
 		return FileChangeTarget;
+	}
+
+	// ------------------------------------------------------------------
+	//  Context menu actions
+	// ------------------------------------------------------------------
+
+	/**
+	 * Discard the change for this file, reverting it to its last committed
+	 * state (tracked files) or removing it from the working tree (untracked
+	 * files).  The method refreshes the UI so the entry disappears from the
+	 * list once the operation completes.  Errors are surfaced in a dialog
+	 * rather than thrown.
+	 * <ul>
+	 *   <li><b>Untracked</b> (Added + UNSTAGED): moves the file to the OS
+	 *       recycle bin via {@link Desktop#moveToTrash} so the user can
+	 *       recover it if needed.  If that fails (e.g. unsupported volume),
+	 *       the user is prompted to delete permanently.</li>
+	 *   <li><b>Staged</b>: runs {@code git reset HEAD --} then
+	 *       {@code git checkout --} to unstage and discard the working-tree
+	 *       change in a single queued operation.</li>
+	 *   <li><b>Unstaged tracked</b>: runs {@code git checkout --} to discard
+	 *       the working-tree change via a single queued operation.</li>
+	 * </ul>
+	 */
+	private void DiscardChange()
+	{
+		GitDir __GitDir = ChangesWidget.GetGitDirTarget();
+		Path __FilePath = FileChangeTarget.GetFilePath();
+
+		// ── Untracked file: move to recycle bin ──
+		if (FileChangeTarget.GetStatus() == EFileChangeStatus.Added
+				&& FileChangeTarget.GetScope() == EFileChangeScope.UNSTAGED)
+		{
+			if (Desktop.getDesktop().moveToTrash(__FilePath.toFile()))
+			{
+				__GitDir.GetOperator().Refresh(ERefreshPolicy.REFRESH_AND_UPDATE_UI);
+				return;
+			}
+
+			// Trash not supported or failed — ask before permanent delete.
+			Platform.runLater(() ->
+			{
+				Alert __Confirm = new Alert(Alert.AlertType.CONFIRMATION);
+				ThemeManager.Instance.ApplyThemeToDialog(__Confirm);
+				__Confirm.setTitle("Discard Change");
+				__Confirm.setHeaderText("Cannot move to Recycle Bin");
+				__Confirm.setContentText("Move to Recycle Bin is unavailable for this file.\nDelete permanently?");
+				__Confirm.showAndWait().ifPresent(__Result ->
+				{
+					if (__Result == ButtonType.OK)
+					{
+						try
+						{
+							Files.deleteIfExists(__FilePath);
+							__GitDir.GetOperator().Refresh(ERefreshPolicy.REFRESH_AND_UPDATE_UI);
+						}
+						catch (IOException __DelEx)
+						{
+							Alert __Err = new Alert(Alert.AlertType.ERROR);
+							ThemeManager.Instance.ApplyThemeToDialog(__Err);
+							__Err.setTitle("Discard Failed");
+							__Err.setHeaderText("Failed to delete file");
+							__Err.setContentText(__DelEx.getMessage());
+							__Err.showAndWait();
+						}
+					}
+				});
+			});
+			return;
+		}
+
+		// ── Tracked file: git reset (if staged) + git checkout ──
+		String __RelPath = __GitDir.GetRepoRootPath().relativize(__FilePath).toString();
+		List<String> __Cmd = new ArrayList<>();
+		if (FileChangeTarget.GetScope() == EFileChangeScope.STAGED)
+		{
+			__Cmd.add("reset");
+			__Cmd.add("HEAD");
+			__Cmd.add("--");
+			__Cmd.add(":(literal)" + __RelPath);
+		}
+		__Cmd.add("checkout");
+		__Cmd.add("--");
+		__Cmd.add(":(literal)" + __RelPath);
+
+		__GitDir.GetOperator().RunGitOp(__Cmd, ERefreshPolicy.REFRESH_AND_UPDATE_UI, (__Ok, __Err, __Dir) ->
+		{
+			if (!__Ok)
+			{
+				Platform.runLater(() ->
+				{
+					Alert __Alert = new Alert(Alert.AlertType.ERROR);
+					ThemeManager.Instance.ApplyThemeToDialog(__Alert);
+					__Alert.setTitle("Discard Failed");
+					__Alert.setHeaderText("Failed to discard change");
+					__Alert.setContentText(__Err);
+					__Alert.showAndWait();
+				});
+			}
+		});
+	}
+
+	/**
+	 * Open the file's parent directory in the system file explorer.
+	 * Uses {@code explorer.exe /select,} on Windows so the file is highlighted.
+	 */
+	private void OpenDirectory()
+	{
+		try
+		{
+			Path __FilePath = FileChangeTarget.GetFilePath();
+			new ProcessBuilder("explorer.exe", "/select,", __FilePath.toAbsolutePath().toString()).start();
+		}
+		catch (Exception __Ex)
+		{
+			Debug.Log(Debug.ChangesCategory, "[Changes] Failed to open directory: %s\n", __Ex.getMessage());
+		}
+	}
+
+	/**
+	 * Append this file's relative path to {@code .gitignore} in the repo root.
+	 */
+	private void IgnoreFile()
+	{
+		GitDir __GitDir = ChangesWidget.GetGitDirTarget();
+		Path __RepoRoot = __GitDir.GetRepoRootPath();
+		Path __Gitignore = __RepoRoot.resolve(".gitignore");
+		String __RelPath = __RepoRoot.relativize(FileChangeTarget.GetFilePath()).toString().replace('\\', '/');
+
+		try
+		{
+			String __Entry = __RelPath + "\n";
+			if (Files.exists(__Gitignore))
+			{
+				// Append without duplicating an existing entry.
+				String __Existing = Files.readString(__Gitignore);
+				if (!__Existing.contains(__RelPath))
+					Files.writeString(__Gitignore, __Existing + __Entry);
+			}
+			else
+			{
+				Files.writeString(__Gitignore, __Entry);
+			}
+
+			__GitDir.GetOperator().Refresh(ERefreshPolicy.REFRESH_AND_UPDATE_UI);
+		}
+		catch (IOException __Ex)
+		{
+			Debug.Log(Debug.ChangesCategory, "[Changes] Failed to write .gitignore: %s\n", __Ex.getMessage());
+		}
+	}
+
+	/**
+	 * Placeholder for advanced ignore options (global ignore, directory-wide
+	 * patterns, negate rules, etc.). Shows a notice for now.
+	 */
+	private void IgnoreFileAdvanced()
+	{
+		Platform.runLater(() ->
+		{
+			Alert __Alert = new Alert(Alert.AlertType.INFORMATION);
+			ThemeManager.Instance.ApplyThemeToDialog(__Alert);
+			__Alert.setTitle("Ignore File (Advanced)");
+			__Alert.setHeaderText("Not yet implemented");
+			__Alert.setContentText("Advanced ignore options will be available in a future update.");
+			__Alert.showAndWait();
+		});
 	}
 
 	private AText CreateStatusText(EFileChangeStatus _Status)

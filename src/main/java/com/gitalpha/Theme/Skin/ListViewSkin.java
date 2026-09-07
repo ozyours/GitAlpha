@@ -52,7 +52,7 @@ public final class ListViewSkin extends ThemeSkin
 			}
 			.a-list-view > .virtual-flow > .clipped-container > .sheet > .list-cell:filled:selected {
 			    -fx-background-color: %s;
-			    -fx-text-fill: #ffffff;
+			    -fx-text-fill: %s;
 			}
 			.a-list-view .scroll-bar {
 			    -fx-background-color: transparent;
@@ -101,12 +101,13 @@ public final class ListViewSkin extends ThemeSkin
 	}
 
 	/**
-	 * Resolve the nine placeholder colors: the background repeated for the
-	 * cells/odd-cells/border ring, the border hairline, hover/selected cells,
-	 * and the scrollbar thumb with its {@code derive()} hover/pressed shades.
+	 * Resolve the ten placeholder colors: the background repeated for the
+	 * cells/odd-cells/border ring, the border hairline, hover cell, selected
+	 * cell background, selected cell text, and the scrollbar thumb with its
+	 * {@code derive()} hover/pressed shades.
 	 *
 	 * @param _Palette the palette to read colors from
-	 * @return the nine placeholder values
+	 * @return the ten placeholder values
 	 */
 	@Override
 	protected Object[] GetColorArguments(ColorPalette _Palette)
@@ -117,7 +118,9 @@ public final class ListViewSkin extends ThemeSkin
 		return new Object[] {
 				__Background, __Background, __Background,
 				_Palette.GetBorderColor().GetHex(__Lookup),
-				_Palette.GetPassiveHighlightColor().GetHex(__Lookup), _Palette.GetActiveHighlightColor().GetHex(__Lookup),
+				_Palette.GetPassiveHighlightColor().GetHex(__Lookup),
+				_Palette.GetActiveHighlightColor().GetHex(__Lookup),
+				_Palette.GetTextAlternateColor().GetHex(__Lookup),
 				__Thumb, "derive(" + __Thumb + ", -15%)", "derive(" + __Thumb + ", -25%)" };
 	}
 }

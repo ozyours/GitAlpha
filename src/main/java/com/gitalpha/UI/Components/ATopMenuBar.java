@@ -3,7 +3,10 @@ package com.gitalpha.UI.Components;
 import com.gitalpha.Theme.ColorPalette;
 import com.gitalpha.Theme.IThemeChangeEvent;
 import com.gitalpha.Theme.ThemeManager;
+import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
+import javafx.stage.Window;
 
 /**
  * Themed menu bar: a {@link MenuBar} carrying a flat secondary-fill skin
@@ -15,10 +18,12 @@ import javafx.scene.control.MenuBar;
  * / {@code ThemeSkin}), so every themed menu bar shares one style source, and
  * the skin re-applies on palette switches via {@link IThemeChangeEvent}.
  * <p>
- * The drop-down context menu (menu items) is styled by the scene-level base
- * stylesheet ({@code BaseSkin}) because popups live in their own scene that
- * node-level stylesheets cannot reach — the same convention as the combo-box
- * popup.
+ * Each {@link Menu}'s internal popup is tagged with the
+ * {@code .a-context-menu} style class via {@link Menu#setOnShown} so the
+ * scene-level context-menu stylesheet ({@code BaseSkin}) themes it. The tag
+ * is applied once per show; {@code setOnShown} fires after the popup is
+ * visible, so iterating {@link Window#getWindows()} finds the showing
+ * {@link ContextMenu}.
  */
 public class ATopMenuBar extends MenuBar implements IThemeChangeEvent
 {
@@ -32,6 +37,32 @@ public class ATopMenuBar extends MenuBar implements IThemeChangeEvent
 		getStyleClass().add("a-menu-bar");
 		ApplySkin();
 		ThemeManager.Instance.AddIThemeChangeEvent(this);
+	}
+
+	/**
+	 * Tag each child {@link Menu}'s internal popup with
+	 * {@code .a-context-menu} so the scene-level context-menu stylesheet
+	 * themes it. Called after menus are added to the bar (e.g. from
+	 * {@code getMenus().addAll(...)}).
+	 *
+	 * @param _Menus the menus whose dropdowns should be themed
+	 */
+	protected void TagMenuPopups(Menu... _Menus)
+	{
+		for (Menu __Menu : _Menus)
+		{
+			__Menu.setOnShown(__Event ->
+			{
+				for (Window __Win : Window.getWindows())
+				{
+					if (__Win instanceof ContextMenu __Popup && __Popup.isShowing())
+					{
+						if (!__Popup.getStyleClass().contains("a-context-menu"))
+							__Popup.getStyleClass().add("a-context-menu");
+					}
+				}
+			});
+		}
 	}
 
 	/**

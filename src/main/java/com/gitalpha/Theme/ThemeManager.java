@@ -4,6 +4,7 @@ import com.gitalpha.Theme.Skin.BaseSkin;
 import com.gitalpha.Theme.Skin.ButtonSkin;
 import com.gitalpha.Theme.Skin.CheckBoxSkin;
 import com.gitalpha.Theme.Skin.ComboBoxSkin;
+import com.gitalpha.Theme.Skin.ContextMenuSkin;
 import com.gitalpha.Theme.Skin.DialogSkin;
 import com.gitalpha.Theme.Skin.ListViewSkin;
 import com.gitalpha.Theme.Skin.MenuBarSkin;
@@ -219,6 +220,21 @@ public class ThemeManager
 	public List<String> GetSplitPaneStylesheets()
 	{
 		return List.of(new SplitPaneSkin().Bake(ActivePalette));
+	}
+
+	/**
+	 * Stylesheet for a themed context menu (right-click and menu-bar
+	 * drop-downs), baked from the active palette as an inline data-URI
+	 * stylesheet: palette background with a border hairline and rounded
+	 * corners, palette text on items, passive-highlight hover, primary focus
+	 * ring, and muted text for disabled items. Apply via
+	 * {@code contextMenu.getStylesheets().add(...)}.
+	 *
+	 * @return the stylesheet URL for the baked context-menu skin
+	 */
+	public List<String> GetContextMenuStylesheets()
+	{
+		return List.of(new ContextMenuSkin().Bake(ActivePalette));
 	}
 
 	/**

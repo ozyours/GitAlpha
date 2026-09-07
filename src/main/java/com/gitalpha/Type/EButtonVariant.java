@@ -5,11 +5,12 @@ import com.gitalpha.Theme.ColorPalette;
 import java.util.Map;
 
 /**
- * Visual variants for themed buttons. Each variant maps the button skin's six
- * color placeholders (background, text, border, hover background, pressed
- * background, focus border) to semantic palette slots so the palette-driven
- * slots re-theme when the palette switches. Hover backgrounds read the
- * passive highlight slot (the hover color), matching the hover feedback of
+ * Visual variants for themed buttons: NORMAL, CONFIRM, DANGER, and GHOST.
+ * Each variant maps the button skin's six color placeholders (background,
+ * text, border, hover background, pressed background, focus border) to
+ * semantic palette slots so the button re-themes when the palette switches.
+ * Hover and pressed backgrounds read the passive highlight or border slot
+ * (via CSS {@code derive()} for CONFIRM) to match the hover feedback of
  * the other themed controls. A few slots are intentional literals rather
  * than palette colors: DANGER's white text and GHOST's transparent fills —
  * they are part of the variant's identity, not themeable.
@@ -18,6 +19,8 @@ public enum EButtonVariant
 {
 	/** Neutral: secondary background, palette border, accent (primary) focus ring */
 	NORMAL,
+	/** Affirmative: accent (primary) background and border, palette text color — use for OK / commit / confirm actions */
+	CONFIRM,
 	/** Destructive: removed-red background and border with white text */
 	DANGER,
 	/** Quiet: transparent background and border; fills on hover/press and gains a focus ring */
@@ -34,7 +37,7 @@ public enum EButtonVariant
 	 * @return the six colors as CSS strings ({@code #rrggbb} hex, or
 	 *         {@code transparent} for GHOST's empty slots)
 	 */
-	public String[] ResolveSkinColors(ColorPalette _Palette)
+		public String[] ResolveSkinColors(ColorPalette _Palette)
 	{
 		Map<String, ThemeColor> __Lookup = _Palette.GetColorLookup();
 		return switch (this)
@@ -45,6 +48,15 @@ public enum EButtonVariant
 					_Palette.GetBorderColor().GetHex(__Lookup),
 					_Palette.GetPassiveHighlightColor().GetHex(__Lookup),
 					_Palette.GetBorderColor().GetHex(__Lookup),
+					_Palette.GetPrimaryColor().GetHex(__Lookup) };
+			// CONFIRM: primary bg/border with palette text; hover/pressed
+			// darken via CSS derive() so the tint adapts to any palette.
+			case CONFIRM -> new String[] {
+					_Palette.GetPrimaryColor().GetHex(__Lookup),
+					_Palette.GetTextColor().GetHex(__Lookup),
+					_Palette.GetPrimaryColor().GetHex(__Lookup),
+					"derive(" + _Palette.GetPrimaryColor().GetHex(__Lookup) + ", -10%)",
+					"derive(" + _Palette.GetPrimaryColor().GetHex(__Lookup) + ", -20%)",
 					_Palette.GetPrimaryColor().GetHex(__Lookup) };
 			case DANGER -> new String[] {
 					_Palette.GetRemovedColor().GetHex(__Lookup), "#ffffff",

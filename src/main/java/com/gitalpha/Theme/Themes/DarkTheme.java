@@ -33,5 +33,6 @@ public class DarkTheme extends ColorPalette
 		SetAddedColor(new ThemeColor("Added", 0.24705882f, 0.7254902f, 0.3137255f));
 		SetRemovedColor(new ThemeColor("Removed", 0.972549f, 0.31764707f, 0.28627452f));
 		SetModifiedColor(new ThemeColor("Modified", 0.8235294f, 0.6f, 0.13333334f));
+		SetTextAlternateColor(new ThemeColor("TextAlternate", 1.0f, 1.0f, 1.0f));
 	}
 }

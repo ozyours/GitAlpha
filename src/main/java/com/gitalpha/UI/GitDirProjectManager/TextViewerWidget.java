@@ -56,41 +56,71 @@ import java.util.regex.Pattern;
  */
 public class TextViewerWidget extends BaseWidget
 {
-	/** Monospaced font used for diff content rows */
+	/**
+	 * Monospaced font used for diff content rows
+	 */
 	private static final Font MONO_FONT = Font.font("Consolas", 13);
-	/** Stats header font size (px); the header counters use the MONO_* variants' Consolas family, larger than the 13px {@link #MONO_FONT} of the diff rows */
+	/**
+	 * Stats header font size (px); the header counters use the MONO_* variants' Consolas family, larger than the 13px {@link #MONO_FONT} of the diff rows
+	 */
 	private static final double STATS_FONT_SIZE = 16;
 
-	/** Background colour for added lines */
+	/**
+	 * Background colour for added lines
+	 */
 	private static final String ADDED_BG = "#e6ffec";
-	/** Left-side bar colour for added lines */
+	/**
+	 * Left-side bar colour for added lines
+	 */
 	private static final String ADDED_BAR = "#2da44e";
-	/** Background colour for removed lines */
+	/**
+	 * Background colour for removed lines
+	 */
 	private static final String REMOVED_BG = "#ffebe9";
-	/** Left-side bar colour for removed lines */
+	/**
+	 * Left-side bar colour for removed lines
+	 */
 	private static final String REMOVED_BAR = "#cf222e";
 
-	/** Background for changed characters within an added line (deeper green) */
+	/**
+	 * Background for changed characters within an added line (deeper green)
+	 */
 	private static final String ADDED_INTRA_BG = "#abf2bc";
-	/** Background for changed characters within a removed line (deeper red) */
+	/**
+	 * Background for changed characters within a removed line (deeper red)
+	 */
 	private static final String REMOVED_INTRA_BG = "#fbbcb6";
 
-	/** Pattern to tokenize a line into alternating whitespace and non-whitespace runs */
+	/**
+	 * Pattern to tokenize a line into alternating whitespace and non-whitespace runs
+	 */
 	private static final Pattern TOKEN_PATTERN = Pattern.compile("\\S+|\\s+");
 
-	/** Fallback uniform row height (px) used if the sample measurement fails */
+	/**
+	 * Fallback uniform row height (px) used if the sample measurement fails
+	 */
 	private static final double DEFAULT_ROW_HEIGHT = 22.0;
-	/** Extra height (px) added to the measured row height to cover the default {@code .list-cell} vertical padding */
+	/**
+	 * Extra height (px) added to the measured row height to cover the default {@code .list-cell} vertical padding
+	 */
 	private static final double LIST_CELL_VERTICAL_PADDING = 8.0;
-	/** Width (px) of the colour-coded left bar of each diff row */
+	/**
+	 * Width (px) of the colour-coded left bar of each diff row
+	 */
 	private static final double BAR_WIDTH = 4.0;
-	/** Horizontal buffer (px) added to the widest-row measurement so the content never clips */
+	/**
+	 * Horizontal buffer (px) added to the widest-row measurement so the content never clips
+	 */
 	private static final double CELL_H_PADDING = 12.0;
 
-	/** Advance width (px) of a single character in the mono font (cached for row-width math) */
+	/**
+	 * Advance width (px) of a single character in the mono font (cached for row-width math)
+	 */
 	private static final double MONO_CHAR_WIDTH = MeasureMonoCharWidth();
 
-	/** Measures the advance width of one character in the mono font. */
+	/**
+	 * Measures the advance width of one character in the mono font.
+	 */
 	private static double MeasureMonoCharWidth()
 	{
 		Text __Meter = new Text("M");
@@ -115,30 +145,30 @@ public class TextViewerWidget extends BaseWidget
 	 * A segment of text with a flag indicating whether it is part of a changed
 	 * (added/removed) span in an intra-line diff.
 	 */
-	private static record StyledSegment(String text, boolean highlighted) {}
+	private static record StyledSegment(String text, boolean highlighted)
+	{
+	}
 
 	/**
 	 * The result of an intra-line diff between an old (removed) line and a new (added) line.
 	 * Each side carries its own list of styled segments.
 	 */
-	private static record IntraLineDiff(
-		List<StyledSegment> oldSegments,
-		List<StyledSegment> newSegments
-	) {}
+	private static record IntraLineDiff(List<StyledSegment> oldSegments, List<StyledSegment> newSegments)
+	{
+	}
 
 	/**
 	 * Data-only carrier for a single diff row, produced off the JavaFX thread.
 	 * Contains everything {@link #CreateRowBox} needs to create the JavaFX nodes.
 	 */
-	private static record PreparedRow(
-		char prefix,
-		Integer oldLineNumber,
-		Integer newLineNumber,
-		String text,
-		List<StyledSegment> intraSegments
-	) {}
+	private static record PreparedRow(char prefix, Integer oldLineNumber, Integer newLineNumber, String text,
+									  List<StyledSegment> intraSegments)
+	{
+	}
 
-	/** Virtualized diff list — VirtualFlow materializes only the visible rows */
+	/**
+	 * Virtualized diff list — VirtualFlow materializes only the visible rows
+	 */
 	private final ListView<PreparedRow> DiffListView;
 	/**
 	 * Bottom horizontal scrollbar that drives {@link #PanOffset}; visible only
@@ -151,7 +181,9 @@ public class TextViewerWidget extends BaseWidget
 	 * bound to the bottom scrollbar's value so the pan follows the thumb.
 	 */
 	private final DoubleProperty PanOffset = new SimpleDoubleProperty(0);
-	/** Overlay on top of the diff list for loading / guard messages / the large-file prompt / error messages */
+	/**
+	 * Overlay on top of the diff list for loading / guard messages / the large-file prompt / error messages
+	 */
 	private final StackPane OverlayPane;
 	/**
 	 * Header bar above the diff list showing the current diff's added/removed
@@ -159,11 +191,17 @@ public class TextViewerWidget extends BaseWidget
 	 * un-managed until a diff is rendered, so it collapses to no height.
 	 */
 	private final HBox hbox_StatsHeader;
-	/** Added-line count text ({@code +N}) shown in {@link #hbox_StatsHeader} */
+	/**
+	 * Added-line count text ({@code +N}) shown in {@link #hbox_StatsHeader}
+	 */
 	private final AText txt_AddedCount;
-	/** Removed-line count text ({@code -M}) shown in {@link #hbox_StatsHeader} */
+	/**
+	 * Removed-line count text ({@code -M}) shown in {@link #hbox_StatsHeader}
+	 */
 	private final AText txt_RemovedCount;
-	/** Static "Changes:" label shown in {@link #hbox_StatsHeader} */
+	/**
+	 * Static "Changes:" label shown in {@link #hbox_StatsHeader}
+	 */
 	private final AText txt_StatsLabel;
 	/**
 	 * The file change whose diff is currently displayed; null if none.
@@ -179,9 +217,13 @@ public class TextViewerWidget extends BaseWidget
 	 * widget is collected).
 	 */
 	private final IScannedFilesUpdatedEvent ScannedFilesUpdatedEventListener;
-	/** Format string (with padding) for line numbers, matching the widest number in the current diff */
+	/**
+	 * Format string (with padding) for line numbers, matching the widest number in the current diff
+	 */
 	private String NumFormat = "%d";
-	/** Blank placeholder with the same width as the widest line number */
+	/**
+	 * Blank placeholder with the same width as the widest line number
+	 */
 	private String EmptyNum = " ";
 	/**
 	 * Width (px) needed by the widest row of the current diff. It drives the
@@ -297,15 +339,24 @@ public class TextViewerWidget extends BaseWidget
 		ScannedFilesUpdatedEventListener = (_UpdatedFiles) ->
 		{
 			FileChange __Current = FileChangeTarget;
-			if (__Current == null || _UpdatedFiles == null || !_UpdatedFiles.contains(__Current))
+
+			if (__Current == null)
 				return;
-			Platform.runLater(() ->
+
+			for (var __FC : _UpdatedFiles)
 			{
-				if (FileChangeTarget == __Current)
-					SetFileChange(__Current);
-			});
+				if (__FC.CompareFile(__Current))
+				{
+					Platform.runLater(() ->
+					{
+						if (FileChangeTarget != null && FileChangeTarget.CompareFile(__Current))
+							SetFileChange(FileChangeTarget);
+					});
+					return;
+				}
+			}
 		};
-		AlphaEngine.Instance.AddIScannedFilesUpdatedEvent(ScannedFilesUpdatedEventListener);
+		GetGitDirTarget().AddIScannedFilesUpdatedEvent(ScannedFilesUpdatedEventListener);
 	}
 
 	// ------------------------------------------------------------------
@@ -342,10 +393,7 @@ public class TextViewerWidget extends BaseWidget
 	{
 		// ---- fast-path: identical texts (nothing changed inside the line) ----
 		if (oldText.equals(newText))
-			return new IntraLineDiff(
-				List.of(new StyledSegment(oldText, false)),
-				List.of(new StyledSegment(newText, false))
-			);
+			return new IntraLineDiff(List.of(new StyledSegment(oldText, false)), List.of(new StyledSegment(newText, false)));
 
 		List<String> oldTokens = Tokenize(oldText);
 		List<String> newTokens = Tokenize(newText);
@@ -354,15 +402,9 @@ public class TextViewerWidget extends BaseWidget
 		if (oldTokens.isEmpty() && newTokens.isEmpty())
 			return new IntraLineDiff(List.of(), List.of());
 		if (oldTokens.isEmpty())
-			return new IntraLineDiff(
-				List.of(),
-				List.of(new StyledSegment(newText, true))
-			);
+			return new IntraLineDiff(List.of(), List.of(new StyledSegment(newText, true)));
 		if (newTokens.isEmpty())
-			return new IntraLineDiff(
-				List.of(new StyledSegment(oldText, true)),
-				List.of()
-			);
+			return new IntraLineDiff(List.of(new StyledSegment(oldText, true)), List.of());
 
 		// ---- LCS DP table ----
 		int m = oldTokens.size();
@@ -403,10 +445,7 @@ public class TextViewerWidget extends BaseWidget
 		}
 
 		// ---- build segment lists from the LCS flags ----
-		return new IntraLineDiff(
-			BuildSegments(oldTokens, oldInLCS),
-			BuildSegments(newTokens, newInLCS)
-		);
+		return new IntraLineDiff(BuildSegments(oldTokens, oldInLCS), BuildSegments(newTokens, newInLCS));
 	}
 
 	/**
@@ -418,7 +457,7 @@ public class TextViewerWidget extends BaseWidget
 	{
 		List<StyledSegment> segments = new ArrayList<>();
 		StringBuilder buf = new StringBuilder();
-		boolean prevInLCS = true;		// start in "unchanged" state
+		boolean prevInLCS = true;        // start in "unchanged" state
 
 		for (int idx = 0; idx < tokens.size(); idx++)
 		{
@@ -500,24 +539,21 @@ public class TextViewerWidget extends BaseWidget
 		}
 
 		ShowLoadingIndicator();
-		CompletableFuture.supplyAsync(() ->
-				PrepareDiffRows(FileChange.ParseDiff(_DiffText)))
-			.thenAcceptAsync(__Prepared -> Platform.runLater(() ->
+		CompletableFuture.supplyAsync(() -> PrepareDiffRows(FileChange.ParseDiff(_DiffText))).thenAcceptAsync(__Prepared -> Platform.runLater(() ->
+		{
+			if (!java.util.Objects.equals(RawDiffToken, __Token))
+				return;   // stale — a newer diff replaced this request
+			SetDiffRows(__Prepared);
+			HideOverlay();
+		})).exceptionally(__Ex ->
+		{
+			Platform.runLater(() ->
 			{
-				if (!java.util.Objects.equals(RawDiffToken, __Token))
-					return;   // stale — a newer diff replaced this request
-				SetDiffRows(__Prepared);
-				HideOverlay();
-			}))
-			.exceptionally(__Ex ->
-			{
-				Platform.runLater(() ->
-				{
-					if (java.util.Objects.equals(RawDiffToken, __Token))
-						RenderErrorMessage(__Ex);
-				});
-				return null;
+				if (java.util.Objects.equals(RawDiffToken, __Token))
+					RenderErrorMessage(__Ex);
 			});
+			return null;
+		});
 	}
 
 	/**
@@ -545,20 +581,17 @@ public class TextViewerWidget extends BaseWidget
 	 */
 	private void LoadDiff(FileChange _Target, boolean _Force)
 	{
-		CompletableFuture<FileChange.DiffLoadResult> __Load = _Force
-			? _Target.GetDiffLinesForce()
-			: _Target.GetDiffLines();
+		CompletableFuture<FileChange.DiffLoadResult> __Load = _Force ? _Target.GetDiffLinesForce() : _Target.GetDiffLines();
 
-		__Load.thenAcceptAsync(result -> HandleDiffResult(_Target, result))
-			.exceptionally(ex ->
+		__Load.thenAcceptAsync(result -> HandleDiffResult(_Target, result)).exceptionally(ex ->
+		{
+			Platform.runLater(() ->
 			{
-				Platform.runLater(() ->
-				{
-					if (FileChangeTarget == _Target)
-						RenderErrorMessage(ex);
-				});
-				return null;
+				if (FileChangeTarget == _Target)
+					RenderErrorMessage(ex);
 			});
+			return null;
+		});
 	}
 
 	/**
@@ -569,7 +602,7 @@ public class TextViewerWidget extends BaseWidget
 	private void HandleDiffResult(FileChange _Target, FileChange.DiffLoadResult _Result)
 	{
 		if (FileChangeTarget != _Target)
-			return;							// stale — user switched to another file
+			return;                            // stale — user switched to another file
 
 		switch (_Result.Guard())
 		{
@@ -601,13 +634,15 @@ public class TextViewerWidget extends BaseWidget
 		Platform.runLater(() ->
 		{
 			if (FileChangeTarget != _Target)
-				return;						// stale by the time we got to FX
+				return;                        // stale by the time we got to FX
 
 			SetDiffRows(prepared);
 		});
 	}
 
-	/** Shows a centered "Loading..." overlay on top of the diff list. */
+	/**
+	 * Shows a centered "Loading..." overlay on top of the diff list.
+	 */
 	private void ShowLoadingIndicator()
 	{
 		AText loadingText = new AText("Loading...", ETextVariant.MONO);
@@ -650,14 +685,18 @@ public class TextViewerWidget extends BaseWidget
 		ShowOverlay(promptBox);
 	}
 
-	/** Renders an error message (from a failed diff load) centered over the diff list. */
+	/**
+	 * Renders an error message (from a failed diff load) centered over the diff list.
+	 */
 	private void RenderErrorMessage(Throwable _Exception)
 	{
 		AText errorText = new AText("Error: " + ExtractErrorMessage(_Exception), ETextVariant.MONO);
 		ShowOverlay(errorText);
 	}
 
-	/** Walks the cause chain to the deepest non-blank message (user-facing text). */
+	/**
+	 * Walks the cause chain to the deepest non-blank message (user-facing text).
+	 */
 	private static String ExtractErrorMessage(Throwable _Exception)
 	{
 		Throwable __Deepest = _Exception;
@@ -667,7 +706,9 @@ public class TextViewerWidget extends BaseWidget
 		return (__Message != null && !__Message.isBlank()) ? __Message : __Deepest.toString();
 	}
 
-	/** Shows a centered overlay on top of the diff list (loading / messages / prompt). */
+	/**
+	 * Shows a centered overlay on top of the diff list (loading / messages / prompt).
+	 */
 	private void ShowOverlay(Node _Content)
 	{
 		OverlayPane.getChildren().setAll(_Content);
@@ -675,7 +716,9 @@ public class TextViewerWidget extends BaseWidget
 		OverlayPane.setManaged(true);
 	}
 
-	/** Hides the overlay so only the diff list is visible. */
+	/**
+	 * Hides the overlay so only the diff list is visible.
+	 */
 	private void HideOverlay()
 	{
 		OverlayPane.getChildren().clear();
@@ -733,19 +776,13 @@ public class TextViewerWidget extends BaseWidget
 					// Pair the oldest pending removal with this addition
 					FileChange.LineChange removedLine = pendingRemovals.removeFirst();
 					IntraLineDiff diff = ComputeIntraLineDiff(removedLine.text(), line.text());
-					result.add(new PreparedRow(
-						removedLine.prefix(), removedLine.oldLineNumber(), removedLine.newLineNumber(),
-						removedLine.text(), diff.oldSegments()));
-					result.add(new PreparedRow(
-						line.prefix(), line.oldLineNumber(), line.newLineNumber(),
-						line.text(), diff.newSegments()));
+					result.add(new PreparedRow(removedLine.prefix(), removedLine.oldLineNumber(), removedLine.newLineNumber(), removedLine.text(), diff.oldSegments()));
+					result.add(new PreparedRow(line.prefix(), line.oldLineNumber(), line.newLineNumber(), line.text(), diff.newSegments()));
 				}
 				else
 				{
 					// Pure addition — no matching removal
-					result.add(new PreparedRow(
-						line.prefix(), line.oldLineNumber(), line.newLineNumber(),
-						line.text(), null));
+					result.add(new PreparedRow(line.prefix(), line.oldLineNumber(), line.newLineNumber(), line.text(), null));
 				}
 				continue;
 			}
@@ -754,22 +791,16 @@ public class TextViewerWidget extends BaseWidget
 			while (!pendingRemovals.isEmpty())
 			{
 				FileChange.LineChange rm = pendingRemovals.removeFirst();
-				result.add(new PreparedRow(
-					rm.prefix(), rm.oldLineNumber(), rm.newLineNumber(),
-					rm.text(), null));
+				result.add(new PreparedRow(rm.prefix(), rm.oldLineNumber(), rm.newLineNumber(), rm.text(), null));
 			}
-			result.add(new PreparedRow(
-				line.prefix(), line.oldLineNumber(), line.newLineNumber(),
-				line.text(), null));
+			result.add(new PreparedRow(line.prefix(), line.oldLineNumber(), line.newLineNumber(), line.text(), null));
 		}
 
 		// Flush remaining unpaired removals at end
 		while (!pendingRemovals.isEmpty())
 		{
 			FileChange.LineChange rm = pendingRemovals.removeFirst();
-			result.add(new PreparedRow(
-				rm.prefix(), rm.oldLineNumber(), rm.newLineNumber(),
-				rm.text(), null));
+			result.add(new PreparedRow(rm.prefix(), rm.oldLineNumber(), rm.newLineNumber(), rm.text(), null));
 		}
 
 		return result;
@@ -861,9 +892,7 @@ public class TextViewerWidget extends BaseWidget
 		// Proportional: viewport / content. Clamped between MIN and MAX fractions
 		// so a very wide diff keeps a draggable thumb and a near-fitting one
 		// keeps a visible scroll sliver.
-		double __Visible = Math.min(
-				Math.max(__Viewport, __Content * PAN_MIN_VISIBLE_FRACTION),
-				__Content * PAN_MAX_VISIBLE_FRACTION);
+		double __Visible = Math.min(Math.max(__Viewport, __Content * PAN_MIN_VISIBLE_FRACTION), __Content * PAN_MAX_VISIBLE_FRACTION);
 		DiffScrollBar.setVisibleAmount(__Visible);
 
 		// Block increment = ~80% of viewport, capped at the remaining pan range.
@@ -954,7 +983,9 @@ public class TextViewerWidget extends BaseWidget
 		return rowBox;
 	}
 
-	/** Inline cell background for the row type, or empty for context rows. */
+	/**
+	 * Inline cell background for the row type, or empty for context rows.
+	 */
 	private static String RowBackgroundStyle(char _Prefix)
 	{
 		if (_Prefix == '+')

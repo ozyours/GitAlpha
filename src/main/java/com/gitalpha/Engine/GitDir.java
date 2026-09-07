@@ -1,5 +1,6 @@
 package com.gitalpha.Engine;
 
+import com.gitalpha.Engine.GitDirContainer.IScannedFilesUpdatedEvent;
 import com.gitalpha.Type.FileChange;
 import com.gitalpha.Type.GitBranch;
 import com.gitalpha.Type.ISerializable;
@@ -11,6 +12,7 @@ import java.lang.ref.WeakReference;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * GitDir manages a .git directory, providing operations to list branches, detect file changes,
@@ -49,10 +51,18 @@ public class GitDir implements ISerializable
 	 * Weak references to FileChange entries whose {@code ScannedModified} was
 	 * updated during the most recent diff-merge. Accumulated by
 	 * {@link com.gitalpha.Engine.GitOperator#DiffMergeChanges} and broadcast
-	 * via {@link AlphaEngine#BroadcastIScannedFilesUpdatedEvent} after refresh.
+	 * via {@link #BroadcastIScannedFilesUpdatedEvent(List)} after refresh.
 	 * Cleared at the start of each refresh cycle.
 	 */
 	private final List<WeakReference<FileChange>> ScannedUpdates = new ArrayList<>();
+
+	/**
+	 * Weak event listeners notified when existing FileChange entries had their
+	 * scanned mtime updated during a refresh (pruned on dead refs).
+	 * Scoped to this repository — only subscribers interested in this repo's
+	 * changes need to register here.
+	 */
+	private final List<WeakReference<IScannedFilesUpdatedEvent>> ScannedFilesUpdatedEventList = new ArrayList<>();
 	/** All branches (local + remote) parsed from `git branch -a` */
 	private final List<GitBranch> Branches = new ArrayList<>();
 	/**
@@ -132,6 +142,60 @@ public class GitDir implements ISerializable
 	public List<WeakReference<FileChange>> GetScannedUpdates()
 	{
 		return ScannedUpdates;
+	}
+
+	/**
+	 * Registers a scanned-files-updated listener (held weakly; no unsubscribe required).
+	 * The listener fires only for this repository's scanned-file updates.
+	 *
+	 * @param _Event the listener to register
+	 */
+	public void AddIScannedFilesUpdatedEvent(IScannedFilesUpdatedEvent _Event)
+	{
+		ScannedFilesUpdatedEventList.add(new WeakReference<>(_Event));
+	}
+
+	/**
+	 * Unregisters a scanned-files-updated listener (optional — dead references are pruned on broadcast).
+	 *
+	 * @param _Event the listener to remove
+	 */
+	public void RemoveIScannedFilesUpdatedEvent(IScannedFilesUpdatedEvent _Event)
+	{
+		int __I = 0;
+		while (__I < ScannedFilesUpdatedEventList.size())
+		{
+			if (Objects.equals(ScannedFilesUpdatedEventList.get(__I).get(), _Event))
+			{
+				ScannedFilesUpdatedEventList.remove(__I);
+				break;
+			}
+			__I++;
+		}
+	}
+
+	/**
+	 * Notifies every live scanned-files-updated listener for this repository,
+	 * pruning dead weak references inline.
+	 *
+	 * @param _UpdatedFiles the FileChange entries whose scanned mtime was refreshed
+	 */
+	public void BroadcastIScannedFilesUpdatedEvent(List<FileChange> _UpdatedFiles)
+	{
+		int __I = 0;
+		while (__I < ScannedFilesUpdatedEventList.size())
+		{
+			var __E = ScannedFilesUpdatedEventList.get(__I);
+			if (__E.get() != null)
+			{
+				__E.get().Event(_UpdatedFiles);
+				__I++;
+			}
+			else
+			{
+				ScannedFilesUpdatedEventList.remove(__I);
+			}
+		}
 	}
 
 	/**

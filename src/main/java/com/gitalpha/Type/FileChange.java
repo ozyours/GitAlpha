@@ -32,47 +32,62 @@ public class FileChange
 	private final GitDir Owner;
 
 	/**
-	 * File mtime captured by GitDir refresh when this change was scanned via
-	 * {@code git status --porcelain}. Volatile because it is written by the
-	 * GitOperator runner thread and read by the JavaFX thread.
-	 * Null until the first refresh populates it.
+	 * Read-only view of a cache entry. Exposes only getters so external
+	 * callers cannot mutate the diff lines, disk mtime, or scanned mtime.
 	 */
-	private volatile FileTime ScannedModified;
-
-	/**
-	 * Immutable (lines, mtime) pair published atomically for cache reads/writes.
-	 * Public so callers (e.g. diff viewer) can inspect cache validity without
-	 * reaching into {@code FileChange} internals.
-	 */
-	public static class CacheEntry
+	public interface ICacheEntry
 	{
-		/** Parsed diff lines from the last successful diff load */
-		private final List<LineChange> Lines;
-		/** File mtime on disk when the diff was computed; null for deleted files */
-		private final FileTime RetrievedModified;
-
-		/**
-		 * @param _Lines             parsed diff lines
-		 * @param _RetrievedModified file modification time at the time of the diff load
-		 */
-		public CacheEntry(List<LineChange> _Lines, FileTime _RetrievedModified)
-		{
-			Lines = _Lines;
-			RetrievedModified = _RetrievedModified;
-		}
-
 		/** @return the cached diff lines */
-		public List<LineChange> GetLines() { return Lines; }
+		List<LineChange> GetLines();
 
 		/** @return the file mtime snapshot, or null if the file was absent */
-		public FileTime GetRetrievedModified() { return RetrievedModified; }
+		FileTime GetRetrievedModified();
+
+		/** @return the file mtime snapshot taken during the last GitDir refresh, or null if not yet scanned */
+		FileTime GetScannedModified();
 	}
 
 	/**
-	 * Parsed-diff cache keyed by file mtime. Volatile + immutable so concurrent
-	 * diff loads (run on the ForkJoinPool) publish and read the pair atomically.
+	 * Mutable cache for diff lines, disk mtime, and scanned mtime.
+	 * Fields are mutated in-place rather than reconstructing the entry,
+	 * so concurrent readers always see a consistent snapshot via volatile
+	 * publish of the reference.
 	 */
-	private volatile CacheEntry Cache = null;
+	public static class CacheEntry implements ICacheEntry
+	{
+		/** Parsed diff lines from the last successful diff load */
+		private List<LineChange> Lines;
+		/** File mtime on disk when the diff was computed; null for deleted files */
+		private FileTime RetrievedModified;
+		/**
+		 * File mtime captured by GitDir refresh when this change was scanned via
+		 * {@code git status --porcelain}. Null until the first refresh populates it.
+		 */
+		private FileTime ScannedModified;
+
+		@Override public List<LineChange> GetLines() { return Lines; }
+
+		/** @param _Lines the parsed diff lines to cache */
+		public void SetLines(List<LineChange> _Lines) { Lines = _Lines; }
+
+		@Override public FileTime GetRetrievedModified() { return RetrievedModified; }
+
+		/** @param _RetrievedModified the file mtime at the time of the diff load */
+		public void SetRetrievedModified(FileTime _RetrievedModified) { RetrievedModified = _RetrievedModified; }
+
+		@Override public FileTime GetScannedModified() { return ScannedModified; }
+
+		/** @param _ScannedModified the file's mtime at the time of the status scan */
+		public void SetScannedModified(FileTime _ScannedModified) { ScannedModified = _ScannedModified; }
+	}
+
+	/**
+	 * Mutable cache entry published atomically via volatile reference.
+	 * Fields are mutated in-place by the runner thread and read by the
+	 * JavaFX thread; the volatile reference ensures visibility of the
+	 * latest snapshot.
+	 */
+	private volatile CacheEntry Cache = new CacheEntry();
 
 	public FileChange(Path _FilePath, EFileChangeStatus _Status, EFileChangeScope _Scope, GitDir _Owner)
 	{
@@ -85,9 +100,79 @@ public class FileChange
 	public Path GetFilePath() { return FilePath; }
 	public EFileChangeStatus GetStatus() { return Status; }
 	public EFileChangeScope GetScope() { return Scope; }
+	public GitDir GetOwner() { return Owner; }
+
+	/** @return the immutable view of the cache entry holding diff lines, disk mtime, and scanned mtime */
+	public ICacheEntry GetCache() { return Cache; }
+
+	/**
+	 * Checks whether two FileChange entries refer to the same file in the same repository.
+	 * Compares the owning GitDir (by .git path) and the file path.
+	 *
+	 * @param _Other the other FileChange to compare against
+	 * @return true if both entries belong to the same repo and point to the same file
+	 */
+	public boolean CompareFile(FileChange _Other)
+	{
+		if (_Other == null)
+			return false;
+		return FilePath.equals(_Other.FilePath)
+			&& Owner.GetGitDirPath().equals(_Other.Owner.GetGitDirPath());
+	}
+
+	/**
+	 * Checks whether two FileChange entries represent the same change: same file,
+	 * same status, and same scope.
+	 *
+	 * @param _Other the other FileChange to compare against
+	 * @return true if both entries match on file, status, and scope
+	 */
+	public boolean CompareFileWithStatus(FileChange _Other)
+	{
+		if (_Other == null)
+			return false;
+		return FilePath.equals(_Other.FilePath)
+			&& Status == _Other.Status
+			&& Scope == _Other.Scope
+			&& Owner.GetGitDirPath().equals(_Other.Owner.GetGitDirPath());
+	}
+
+	/**
+	 * Checks whether a list contains an entry that matches this file
+	 * (same repo + same path) via {@link #CompareFile}.
+	 *
+	 * @param _List the list to search
+	 * @return true if any entry in the list matches this file
+	 */
+	public boolean ContainsFile(List<FileChange> _List)
+	{
+		for (var __FC : _List)
+		{
+			if (CompareFile(__FC))
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Checks whether a list contains an entry that matches this change
+	 * (same repo + same path + same status + same scope) via {@link #CompareFileWithStatus}.
+	 *
+	 * @param _List the list to search
+	 * @return true if any entry in the list matches this change
+	 */
+	public boolean ContainsFileWithStatus(List<FileChange> _List)
+	{
+		for (var __FC : _List)
+		{
+			if (CompareFileWithStatus(__FC))
+				return true;
+		}
+		return false;
+	}
 
 	/** @return the file mtime snapshot taken during the last GitDir refresh, or null if not yet scanned */
-	public FileTime GetScannedModified() { return ScannedModified; }
+	public FileTime GetScannedModified() { return Cache.GetScannedModified(); }
 
 	/**
 	 * Updates the scanned mtime. Called by {@link com.gitalpha.Engine.GitOperator}
@@ -95,7 +180,7 @@ public class FileChange
 	 *
 	 * @param _ScannedModified the file's mtime at the time of the status scan
 	 */
-	public void SetScannedModified(FileTime _ScannedModified) { ScannedModified = _ScannedModified; }
+	public void SetScannedModified(FileTime _ScannedModified) { Cache.SetScannedModified(_ScannedModified); }
 
 	/**
 	 * Loads the parsed diff lines for this change, applying the file-load guards
@@ -141,7 +226,7 @@ public class FileChange
 
 				// Fast path: return the cached diff when the file has not changed on disk.
 				CacheEntry __Cache = Cache;
-				if (__FileExists && __Cache != null && __Cache.GetRetrievedModified() != null && __Cache.GetRetrievedModified().equals(__CurrentLastModified))
+				if (__FileExists && __Cache.GetRetrievedModified() != null && __Cache.GetRetrievedModified().equals(__CurrentLastModified))
 					return new DiffLoadResult(__Cache.GetLines(), EFileLoadGuard.NONE);
 
 				Path __RelativePath = Owner.GetRepoRootPath().relativize(FilePath);
@@ -211,8 +296,9 @@ public class FileChange
 
 				var __DiffLines = ParseDiffPerFile(__Diff);
 
-				// Publish the new cache entry for future mtime-matched reads.
-				Cache = new CacheEntry(__DiffLines, __FileExists ? __CurrentLastModified : null);
+				// Mutate the cache entry in-place for future mtime-matched reads.
+				Cache.SetLines(__DiffLines);
+				Cache.SetRetrievedModified(__FileExists ? __CurrentLastModified : null);
 
 				return new DiffLoadResult(__DiffLines, EFileLoadGuard.NONE);
 			}

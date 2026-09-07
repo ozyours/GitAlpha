@@ -60,6 +60,7 @@ public abstract class ColorPalette
 		BorderColor = _Source.BorderColor.Copy();
 		Background1Color = _Source.Background1Color.Copy();
 		Background2Color = _Source.Background2Color.Copy();
+		TextAlternateColor = _Source.TextAlternateColor.Copy();
 		AddedColor = _Source.AddedColor.Copy();
 		RemovedColor = _Source.RemovedColor.Copy();
 		ModifiedColor = _Source.ModifiedColor.Copy();
@@ -79,6 +80,14 @@ public abstract class ColorPalette
 	 *  background. Kept separate so the window frame can differ slightly from
 	 *  the panels it hosts (e.g. greyish white around white content). */
 	private ThemeColor Background2Color;
+	/**
+	 * Alternate text color for text rendered on top of highlight/selection
+	 * backgrounds (e.g. white text on an active-highlight list row). Kept
+	 * separate from {@link #TextColor} so each theme can set the contrast
+	 * color independently — light themes typically use white; dark themes
+	 * may use a lighter shade of their text.
+	 */
+	private ThemeColor TextAlternateColor;
 	// --- Git status colors (bases; shades derived via MixToward) ---
 	private ThemeColor AddedColor;
 	private ThemeColor RemovedColor;
@@ -154,6 +163,14 @@ public abstract class ColorPalette
 	public ThemeColor GetBackground2Color()
 	{
 		return Background2Color;
+	}
+
+	/**
+	 * @return the alternate text color (for text on highlighted/selected backgrounds)
+	 */
+	public ThemeColor GetTextAlternateColor()
+	{
+		return TextAlternateColor;
 	}
 
 	/**
@@ -272,6 +289,16 @@ public abstract class ColorPalette
 	}
 
 	/**
+	 * Set the alternate text color (for text on highlighted/selected backgrounds).
+	 *
+	 * @param _Color the color to store
+	 */
+	public void SetTextAlternateColor(ThemeColor _Color)
+	{
+		TextAlternateColor = _Color;
+	}
+
+	/**
 	 * Set the added-status base color.
 	 *
 	 * @param _Color the color to store
@@ -323,6 +350,7 @@ public abstract class ColorPalette
 		PutSlot(__Lookup, BorderColor);
 		PutSlot(__Lookup, Background1Color);
 		PutSlot(__Lookup, Background2Color);
+		PutSlot(__Lookup, TextAlternateColor);
 		PutSlot(__Lookup, AddedColor);
 		PutSlot(__Lookup, RemovedColor);
 		PutSlot(__Lookup, ModifiedColor);
@@ -397,6 +425,7 @@ public abstract class ColorPalette
 		AppendVar(__Css, "-gitalpha-border", BorderColor.GetHex(__Lookup));
 		AppendVar(__Css, "-gitalpha-background", Background1Color.GetHex(__Lookup));
 		AppendVar(__Css, "-gitalpha-background-2", Background2Color.GetHex(__Lookup));
+		AppendVar(__Css, "-gitalpha-text-alternate", TextAlternateColor.GetHex(__Lookup));
 		AppendVar(__Css, "-gitalpha-added", AddedColor.GetHex(__Lookup));
 		AppendVar(__Css, "-gitalpha-added-bg", MixToward(AddedColor, Background1Color, 0.90, __Lookup));
 		AppendVar(__Css, "-gitalpha-added-intra", MixToward(AddedColor, Background1Color, 0.70, __Lookup));

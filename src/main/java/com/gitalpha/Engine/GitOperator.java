@@ -512,7 +512,7 @@ public class GitOperator implements AutoCloseable
 					__Dereferenced.add(__FC);
 			}
 			if (!__Dereferenced.isEmpty())
-				Engine.BroadcastIScannedFilesUpdatedEvent(__Dereferenced);
+				GitDirTarget.BroadcastIScannedFilesUpdatedEvent(__Dereferenced);
 			__Updates.clear();
 		}
 

@@ -17,11 +17,11 @@ public class LightTheme extends ColorPalette
 	 */
 	public LightTheme()
 	{
-		SetPrimaryColor(new ThemeColor("Primary", 0.23529412f, 0.53333336f, 0.92156863f));
-		SetSecondaryColor(new ThemeColor("Secondary", 0.8f, 0.8980392f, 1.0f));
+		SetPrimaryColor(new ThemeColor("Primary", 0.4509804f, 0.68235296f, 0.96862745f));
+		SetSecondaryColor(new ThemeColor("Secondary", 0.8509804f, 0.92156863f, 1.0f));
 		SetTextColor(new ThemeColor("Text", 0.12156863f, 0.13725491f, 0.15686275f));
 		SetMutedTextColor(new ThemeColor("MutedText", 0.43137255f, 0.46666667f, 0.5058824f));
-		SetActiveHighlightColor(new ThemeColor("ActiveHighlight", 0.23529412f, 0.53333336f, 0.92156863f));
+		SetActiveHighlightColor(new ThemeColor("ActiveHighlight", 0.4509804f, 0.68235296f, 0.96862745f));
 		SetPassiveHighlightColor(new ThemeColor("PassiveHighlight", 0.8666667f, 0.95686275f, 1.0f));
 		SetBorderColor(new ThemeColor("Border", 0.8156863f, 0.84313726f, 0.87058824f));
 		SetBackground1Color(new ThemeColor("Background 1", 1.0f, 1.0f, 1.0f));
@@ -29,5 +29,6 @@ public class LightTheme extends ColorPalette
 		SetAddedColor(new ThemeColor("Added", 0.1764706f, 0.6431373f, 0.30588236f));
 		SetRemovedColor(new ThemeColor("Removed", 0.8117647f, 0.13333334f, 0.18039216f));
 		SetModifiedColor(new ThemeColor("Modified", 0.6039216f, 0.40392157f, 0.0f));
+		SetTextAlternateColor(new ThemeColor("TextAlternate", 1.0f, 1.0f, 1.0f));
 	}
 }

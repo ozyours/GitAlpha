@@ -23,7 +23,12 @@ public class TopMenuBar extends ATopMenuBar
 	public TopMenuBar()
 	{
 		super();
-		getMenus().addAll(CreateFileMenu(), CreateGitMenu(), CreateSettingsMenu(), CreateHelpMenu());
+		Menu __File = CreateFileMenu();
+		Menu __Git = CreateGitMenu();
+		Menu __Settings = CreateSettingsMenu();
+		Menu __Help = CreateHelpMenu();
+		getMenus().addAll(__File, __Git, __Settings, __Help);
+		TagMenuPopups(__File, __Git, __Settings, __Help);
 	}
 
 	/** Build the File menu: open project, close tab, and quit (all placeholders). */
