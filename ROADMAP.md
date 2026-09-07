@@ -186,6 +186,23 @@ Items that were discussed and have been committed to `master`.
 - [x] **Comment and formatting cleanup** — `AlphaEngine` single-line Javadoc comments expanded to
       multi-line format; `ChangesWidget` `ChangeEntryWidget` indentation fixed, debug `Log` calls
       removed; no functional changes
+- [x] **Filesystem watcher + scan-mtime pipeline** — `GitWatcher` monitors the working tree via
+      recursive `WatchService` (`.git` skipped, 500 ms debounce) and triggers a debounced refresh;
+      watcher lifecycle wired to tab open/close; `ScannedModified` field added to `CacheEntry`
+      (mutable class with `ICacheEntry` interface), captured per porcelain entry via
+      `Files.getLastModifiedTime` and synced onto preserved entries during diff-merge;
+      `IScannedFilesUpdatedEvent` broadcast after refresh so `TextViewerWidget` re-renders the
+      current diff when its file is re-scanned (`453e9a7`)
+- [x] **Context menu theming + changes-list actions** — `ContextMenuSkin` (scene-level CSS with
+      `-gitalpha-*` variables targeting `.a-context-menu`), `AContextMenu` component,
+      `ATopMenuBar.TagMenuPopups()` tags each `Menu` dropdown popup via `setOnShown` so menu-bar
+      drop-downs inherit the palette theme; `ChangesWidget` right-click context menu on file
+      entries: Discard Change (recycle bin via `Desktop.moveToTrash` for untracked, `git
+      checkout`/`reset` for tracked), Open Directory, Ignore File; `CONFIRM` button variant
+      (primary bg + palette text, `derive` hover/pressed) replaces hardcoded accent+white in
+      `DialogSkin`; `TextAlternateColor` palette slot replaces hardcoded `#ffffff` in
+      `ListViewSkin` selected text and combo-box popup; light theme primary/secondary colors
+      lightened (`8e1d966`)
 
 ---
 
