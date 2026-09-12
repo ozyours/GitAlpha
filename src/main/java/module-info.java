@@ -10,6 +10,8 @@ module com.gitalpha
     requires javafx.controls;
     requires javafx.graphics;
     requires java.desktop;
+    requires org.fxmisc.richtext;
+    requires org.fxmisc.flowless;
     
     opens com.gitalpha to javafx.graphics;
     opens com.gitalpha.UI to javafx.graphics;

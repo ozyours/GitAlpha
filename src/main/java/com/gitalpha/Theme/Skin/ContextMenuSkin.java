@@ -6,24 +6,34 @@ import com.gitalpha.Type.ThemeColor;
 import java.util.Map;
 
 /**
- * The context-menu popup skin: palette background with a border hairline and
- * rounded corners, palette text on the items, a passive-highlight (hover) row,
- * an accent focus ring on the focused item, and a border hairline on
- * separators. Disabled items use the muted text color.
+ * The context-menu popup skin, and the single source of its CSS: palette
+ * background with a border hairline and rounded corners, palette text on the
+ * items, a passive-highlight (hover) row, an accent focus ring on the focused
+ * item, and a border hairline on separators. Disabled items use the muted
+ * text color.
  * <p>
- * Like other node-level skins, colors are inlined (hex values baked at
- * construction) because {@code ContextMenu} lives in its own scene and cannot
- * resolve scene-level {@code -gitalpha-*} variables. Apply via
- * {@code contextMenu.getStylesheets().add(skin.Bake(palette))}.
+ * Targets the {@code .a-context-menu} class added by
+ * {@link com.gitalpha.UI.Components.AContextMenu} and by
+ * {@link com.gitalpha.UI.Components.ATopMenuBar} on each Menu's internal
+ * popup, so only themed context menus (right-click + menu-bar drop-downs)
+ * inherit the palette; unstyled menus keep the Modena default. Selector
+ * mirrors Modena's full {@code .context-menu .menu-item} path so the palette
+ * values win the cascade at equal specificity.
+ * <p>
+ * Consumed two ways: {@link #Bake} fills the placeholders with baked hex
+ * values, while {@link #GetSceneCss} fills them with the scene's
+ * {@code -gitalpha-*} variables for composition into {@link BaseSkin} (the
+ * live path — popups inherit the owner scene's stylesheet, the only way to
+ * theme them).
  * <p>
  * Placeholder order: background, border, separator border, text, muted text
- * (disabled), passive highlight (hover), primary (focus ring background),
+ * (disabled), passive highlight (hover), passive highlight (focus row),
  * text alternate (focus text), primary (focus ring border).
  */
 public final class ContextMenuSkin extends ThemeSkin
 {
 	private static final String CSS_FORMAT = """
-			.context-menu {
+			.a-context-menu {
 			    -fx-background-color: %s;
 			    -fx-background-insets: 0;
 			    -fx-background-radius: 4;
@@ -32,25 +42,25 @@ public final class ContextMenuSkin extends ThemeSkin
 			    -fx-border-radius: 4;
 			    -fx-padding: 4 0 4 0;
 			}
-			.context-menu > .separator > .line {
+			.a-context-menu > .separator > .line {
 			    -fx-border-color: %s;
 			    -fx-border-width: 1 0 0 0;
 			}
-			.context-menu .menu-item {
+			.a-context-menu .menu-item {
 			    -fx-background-color: transparent;
 			    -fx-padding: 4 10 4 10;
 			}
-			.context-menu .menu-item > .label {
+			.a-context-menu .menu-item > .label {
 			    -fx-text-fill: %s;
 			    -fx-font-size: 12px;
 			}
-			.context-menu .menu-item:disabled > .label {
+			.a-context-menu .menu-item:disabled > .label {
 			    -fx-text-fill: %s;
 			}
-			.context-menu .menu-item:hover {
+			.a-context-menu .menu-item:hover {
 			    -fx-background-color: %s;
 			}
-			.context-menu .menu-item:focused {
+			.a-context-menu .menu-item:focused {
 			    -fx-background-color: %s;
 			    -fx-text-fill: %s;
 			    -fx-border-color: %s;
@@ -58,6 +68,23 @@ public final class ContextMenuSkin extends ThemeSkin
 			    -fx-border-radius: 3;
 			}
 			""";
+
+	/**
+	 * The scene-variable rendering of the skin, for composition into the
+	 * scene-level stylesheet ({@link BaseSkin}): the same rules with the
+	 * {@code -gitalpha-*} lookups in placeholder order, so the live popup
+	 * styling follows palette switches with the scene re-bake.
+	 *
+	 * @return the context-menu CSS with scene variables (no baking needed)
+	 */
+	public static String GetSceneCss()
+	{
+		return CSS_FORMAT.formatted(
+				"-gitalpha-background", "-gitalpha-border", "-gitalpha-border",
+				"-gitalpha-text", "-gitalpha-muted-text",
+				"-gitalpha-passive-highlight", "-gitalpha-passive-highlight",
+				"-gitalpha-text-alternate", "-gitalpha-primary");
+	}
 
 	/**
 	 * @return the context-menu CSS format ({@link #CSS_FORMAT})
@@ -70,8 +97,8 @@ public final class ContextMenuSkin extends ThemeSkin
 
 	/**
 	 * Resolve the nine placeholder colors: background, border, separator
-	 * border, text, muted text (disabled), passive highlight (hover), primary
-	 * (focus ring background), alternate text (focus text), primary (focus
+	 * border, text, muted text (disabled), passive highlight (hover), passive
+	 * highlight (focus row), text alternate (focus text), primary (focus
 	 * ring border).
 	 *
 	 * @param _Palette the palette to read colors from

@@ -8,6 +8,7 @@ import com.gitalpha.Theme.Skin.ContextMenuSkin;
 import com.gitalpha.Theme.Skin.DialogSkin;
 import com.gitalpha.Theme.Skin.ListViewSkin;
 import com.gitalpha.Theme.Skin.MenuBarSkin;
+import com.gitalpha.Theme.Skin.RichTextSkin;
 import com.gitalpha.Theme.Skin.ScrollBarSkin;
 import com.gitalpha.Theme.Skin.SplitPaneSkin;
 import com.gitalpha.Theme.Skin.TabButtonSkin;
@@ -235,6 +236,21 @@ public class ThemeManager
 	public List<String> GetContextMenuStylesheets()
 	{
 		return List.of(new ContextMenuSkin().Bake(ActivePalette));
+	}
+
+	/**
+	 * Stylesheet for the RichTextFX diff-viewer {@code CodeArea}, baked from
+	 * the active palette as an inline data-URI stylesheet: paragraph
+	 * backgrounds for added/removed lines, intra-line word highlights, and
+	 * the selection highlight in the palette primary. Apply via
+	 * {@code codeArea.getStylesheets().add(...)} and re-apply on palette
+	 * switches (the selection fill is palette-driven). See {@link ThemeSkin}.
+	 *
+	 * @return the stylesheet URL for the baked rich-text skin
+	 */
+	public List<String> GetRichTextStylesheets()
+	{
+		return List.of(new RichTextSkin().Bake(ActivePalette));
 	}
 
 	/**

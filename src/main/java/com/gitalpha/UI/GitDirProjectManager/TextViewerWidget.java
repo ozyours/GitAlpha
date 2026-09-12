@@ -1,28 +1,25 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
-import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.Debug;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Engine.GitDirContainer.IScannedFilesUpdatedEvent;
 import com.gitalpha.Type.ETextVariant;
 import com.gitalpha.Type.FileChange;
-import com.gitalpha.UI.Components.AListView;
-import com.gitalpha.UI.Components.AScrollBar;
+import com.gitalpha.Theme.IThemeChangeEvent;
+import com.gitalpha.Theme.ThemeManager;
 import com.gitalpha.UI.Components.AText;
 import javafx.application.Platform;
-import javafx.beans.property.DoubleProperty;
-import javafx.beans.property.SimpleDoubleProperty;
 import javafx.geometry.Insets;
-import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.*;
-import javafx.scene.input.ScrollEvent;
+import javafx.scene.control.Button;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextAlignment;
+import org.fxmisc.richtext.CodeArea;
+import org.fxmisc.flowless.VirtualizedScrollPane;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -33,63 +30,33 @@ import java.util.regex.Pattern;
 
 /**
  * Renders a coloured unified-diff view for a single file change.
- * Each diff line shows old/new line numbers, a +/-/space prefix, and the line
- * content, with green/red highlighting for additions and removals.
+ * Each diff line's old/new line numbers and +/-/space prefix are rendered as
+ * non-selectable paragraph graphic nodes; the CodeArea body contains only the
+ * selectable content text.
  * <p>
- * The rows live in a virtualized {@link ListView}: only the rows visible in the
- * viewport are materialized as JavaFX nodes, so node count stays O(visible)
- * regardless of the diff size (the previous ScrollPane + VBox created one HBox
- * per row and froze on large files). The list always fills the pane, so its
- * vertical scrollbar stays pinned to the right edge of the viewport; rows wider
- * than the pane are panned by a bottom horizontal {@link AScrollBar} whose value
- * drives {@link #PanOffset}, and each visible cell translates its row content
- * by {@code PanOffset.negate()} so only the content slides inside the cell.
+ * The diff is rendered in a {@link CodeArea} (RichTextFX) which provides native
+ * text selection, virtualization, and horizontal/vertical scrolling. Line
+ * backgrounds are applied via paragraph styles, text styles (intra-line
+ * highlights) via inline style ranges, and a paragraph graphic factory
+ * builds non-selectable line-number + prefix nodes for each line.
  * <p>
  * Theming: the stats header (added/removed counts) and the overlay messages
  * (loading / guard / large-file prompt / error) are {@link AText} nodes themed
- * via {@link ETextVariant}, so they re-theme on palette switches. The per-row
- * diff texts (line numbers, prefix, content) stay plain {@link Text} nodes
- * with the fixed {@link #MONO_FONT} — they are bulk-created per visible row in
- * a recycled cell factory, so per-node theme tracking would add listener
- * overhead for transient nodes, and the fixed font keeps the row-width math
- * ({@link #MONO_CHAR_WIDTH}) exact.
+ * via {@link ETextVariant}, so they re-theme on palette switches. The diff text
+ * itself uses a fixed {@link #MONO_FONT} via CSS and stays plain-styled.
  */
 public class TextViewerWidget extends BaseWidget
 {
 	/**
-	 * Monospaced font used for diff content rows
+	 * Monospaced font used for diff content rows. Retained for reference; the
+	 * actual CodeArea font is set via inline CSS in the constructor because
+	 * RichTextFX's internal Text nodes require a stylesheet-level declaration.
 	 */
-	private static final Font MONO_FONT = Font.font("Consolas", 13);
+	private static final Font MONO_FONT = Font.font("Consolas", 14);
 	/**
 	 * Stats header font size (px); the header counters use the MONO_* variants' Consolas family, larger than the 13px {@link #MONO_FONT} of the diff rows
 	 */
 	private static final double STATS_FONT_SIZE = 16;
-
-	/**
-	 * Background colour for added lines
-	 */
-	private static final String ADDED_BG = "#e6ffec";
-	/**
-	 * Left-side bar colour for added lines
-	 */
-	private static final String ADDED_BAR = "#2da44e";
-	/**
-	 * Background colour for removed lines
-	 */
-	private static final String REMOVED_BG = "#ffebe9";
-	/**
-	 * Left-side bar colour for removed lines
-	 */
-	private static final String REMOVED_BAR = "#cf222e";
-
-	/**
-	 * Background for changed characters within an added line (deeper green)
-	 */
-	private static final String ADDED_INTRA_BG = "#abf2bc";
-	/**
-	 * Background for changed characters within a removed line (deeper red)
-	 */
-	private static final String REMOVED_INTRA_BG = "#fbbcb6";
 
 	/**
 	 * Pattern to tokenize a line into alternating whitespace and non-whitespace runs
@@ -97,49 +64,17 @@ public class TextViewerWidget extends BaseWidget
 	private static final Pattern TOKEN_PATTERN = Pattern.compile("\\S+|\\s+");
 
 	/**
-	 * Fallback uniform row height (px) used if the sample measurement fails
+	 * Per-line data for the paragraph graphic factory. Stores the prefix
+	 * character, old/new line numbers, and the numWidth so the factory can
+	 * build non-selectable line-number + prefix nodes.
 	 */
-	private static final double DEFAULT_ROW_HEIGHT = 22.0;
-	/**
-	 * Extra height (px) added to the measured row height to cover the default {@code .list-cell} vertical padding
-	 */
-	private static final double LIST_CELL_VERTICAL_PADDING = 8.0;
-	/**
-	 * Width (px) of the colour-coded left bar of each diff row
-	 */
-	private static final double BAR_WIDTH = 4.0;
-	/**
-	 * Horizontal buffer (px) added to the widest-row measurement so the content never clips
-	 */
-	private static final double CELL_H_PADDING = 12.0;
+	private record GraphicLine(char prefix, Integer oldNum, Integer newNum, int numWidth) {}
 
 	/**
-	 * Advance width (px) of a single character in the mono font (cached for row-width math)
+	 * Stores per-line data for the paragraph graphic factory, populated in
+	 * {@link #SetDiffRows}. The factory reads this list by paragraph index.
 	 */
-	private static final double MONO_CHAR_WIDTH = MeasureMonoCharWidth();
-
-	/**
-	 * Measures the advance width of one character in the mono font.
-	 */
-	private static double MeasureMonoCharWidth()
-	{
-		Text __Meter = new Text("M");
-		__Meter.setFont(MONO_FONT);
-		return __Meter.getLayoutBounds().getWidth();
-	}
-
-	/**
-	 * Minimum pan-scrollbar thumb size as a fraction of the total content width.
-	 * The thumb is normally {@code viewport / content}, so an extremely wide diff
-	 * would shrink it to an un-draggable sliver; this floor keeps it grabbable.
-	 */
-	private static final double PAN_MIN_VISIBLE_FRACTION = 0.05;
-	/**
-	 * Maximum pan-scrollbar thumb size as a fraction of the total content width.
-	 * When the content barely overflows the pane the proportional thumb would
-	 * swallow the whole track; this cap leaves a visible scroll sliver.
-	 */
-	private static final double PAN_MAX_VISIBLE_FRACTION = 0.98;
+	private final List<GraphicLine> GraphicRows = new ArrayList<>();
 
 	/**
 	 * A segment of text with a flag indicating whether it is part of a changed
@@ -159,7 +94,7 @@ public class TextViewerWidget extends BaseWidget
 
 	/**
 	 * Data-only carrier for a single diff row, produced off the JavaFX thread.
-	 * Contains everything {@link #CreateRowBox} needs to create the JavaFX nodes.
+	 * Contains everything needed to render the row in the CodeArea.
 	 */
 	private static record PreparedRow(char prefix, Integer oldLineNumber, Integer newLineNumber, String text,
 									  List<StyledSegment> intraSegments)
@@ -167,26 +102,38 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
-	 * Virtualized diff list — VirtualFlow materializes only the visible rows
+	 * RichTextFX code area that renders the diff text with inline styles.
+	 * Handles text selection, virtualization, and native scrolling.
 	 */
-	private final ListView<PreparedRow> DiffListView;
+	private final CodeArea DiffCodeArea;
 	/**
-	 * Bottom horizontal scrollbar that drives {@link #PanOffset}; visible only
-	 * when a content row is wider than the pane. Themed (see {@link AScrollBar})
-	 * so it matches the diff list's own vertical scrollbar.
+	 * Wraps the {@link CodeArea} in a {@link VirtualizedScrollPane} that
+	 * provides the visible vertical and horizontal scrollbars. The raw
+	 * {@code CodeArea} is a {@code Virtualized} component — it virtualizes
+	 * content but does not render scrollbar widgets on its own.
 	 */
-	private final AScrollBar DiffScrollBar = new AScrollBar();
+	private final VirtualizedScrollPane<CodeArea> DiffScrollPane;
 	/**
-	 * Horizontal pan (px) applied to the row content of every visible cell;
-	 * bound to the bottom scrollbar's value so the pan follows the thumb.
+	 * Theme listener that re-applies the rich-text skin to {@link #DiffCodeArea}
+	 * whenever the palette changes (the selection fill is palette-driven).
 	 */
-	private final DoubleProperty PanOffset = new SimpleDoubleProperty(0);
+	private final IThemeChangeEvent RichTextSkinApplier;
 	/**
-	 * Overlay on top of the diff list for loading / guard messages / the large-file prompt / error messages
+	 * Last baked rich-text stylesheet URL on {@link #DiffCodeArea}, removed
+	 * by exact URL before the fresh sheet is added on each re-bake.
+	 */
+	private String RichTextSkinUrl = null;
+	/**
+	 * Theme listener that re-applies the minimalist scrollbar skin to both
+	 * scrollbars inside {@link #DiffScrollPane} whenever the palette changes.
+	 */
+	private final IThemeChangeEvent ScrollBarSkinApplier;
+	/**
+	 * Overlay on top of the diff area for loading / guard messages / the large-file prompt / error messages
 	 */
 	private final StackPane OverlayPane;
 	/**
-	 * Header bar above the diff list showing the current diff's added/removed
+	 * Header bar above the diff area showing the current diff's added/removed
 	 * line counts ({@code +N} in green, {@code -M} in red). Kept invisible and
 	 * un-managed until a diff is rendered, so it collapses to no height.
 	 */
@@ -218,20 +165,6 @@ public class TextViewerWidget extends BaseWidget
 	 */
 	private final IScannedFilesUpdatedEvent ScannedFilesUpdatedEventListener;
 	/**
-	 * Format string (with padding) for line numbers, matching the widest number in the current diff
-	 */
-	private String NumFormat = "%d";
-	/**
-	 * Blank placeholder with the same width as the widest line number
-	 */
-	private String EmptyNum = " ";
-	/**
-	 * Width (px) needed by the widest row of the current diff. It drives the
-	 * bottom scrollbar's pan range: the list itself always fills the pane, and
-	 * content only pans when this exceeds the pane width.
-	 */
-	private final DoubleProperty DiffContentWidth = new SimpleDoubleProperty(0);
-	/**
 	 * Token of the latest raw-diff request. Written on the JavaFX thread when a
 	 * new diff is requested; the off-thread parse/prepare completion compares it
 	 * against the captured token to drop stale responses (same role as
@@ -250,64 +183,112 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
-	 * Builds the viewer: a virtualized {@link ListView} pinned to a fixed cell
-	 * size that always fills the pane (its vertical scrollbar therefore stays at
-	 * the right edge of the visible viewport), with a bottom horizontal
-	 * scrollbar that pans wide rows by translating the row content inside each
-	 * visible cell, and a {@link StackPane} overlay for the loading / guard /
-	 * prompt / error states. The diff itself is populated via {@link #SetFileChange}.
+	 * Builds the viewer: a {@link CodeArea} that renders the diff with selectable
+	 * content text and a non-selectable paragraph graphic factory providing line
+	 * numbers and prefix characters, with a {@link StackPane} overlay for the
+	 * loading / guard / prompt / error states. The diff itself is populated via
+	 * {@link #SetFileChange}.
 	 */
 	public TextViewerWidget(GitDir _GitDirTarget, GitDirWidget _GitDirWidgetTarget)
 	{
 		super(_GitDirTarget, _GitDirWidgetTarget);
 
-		// Virtualized diff view: the ListView's VirtualFlow creates cells only for
-		// the visible rows, so the node count is O(visible) no matter the diff size.
-		DiffListView = new AListView<>();
-		DiffListView.setFixedCellSize(ComputeFixedCellSize());
-		DiffListView.setCellFactory(__List -> new DiffRowCell());
-		DiffListView.setFocusTraversable(false);
+		// RichTextFX code area — non-editable, monospace, virtualized with native
+		// text selection and scrolling. Font is set via inline CSS rather than the
+		// MONO_FONT constant (which is retained only for reference), because
+		// CodeArea's internal Text nodes need a stylesheet-level font declaration.
+		DiffCodeArea = new CodeArea();
+		DiffCodeArea.setEditable(false);
+		DiffCodeArea.setFocusTraversable(false);
+		DiffCodeArea.setStyle("-fx-font-family: 'Consolas'; -fx-font-size: 14px;");
 
-		// The AListView skin bakes the flat palette background (no alternating
-		// stripes, no default border ring) and the minimalist scrollbar,
-		// re-applying on theme switches; the green/red diff rows keep their
-		// inline backgrounds (see RowBackgroundStyle).
-
-		// The list always fills the pane, so its vertical scrollbar stays pinned
-		// to the right edge of the visible viewport. Wide lines are panned by
-		// translating the row content inside each visible cell (see DiffRowCell),
-		// driven by the bottom horizontal scrollbar — the list itself is never
-		// wider than the pane (so its content width can't inflate the GridPane
-		// column either).
-		DiffScrollBar.setOrientation(Orientation.HORIZONTAL);
-		// The AScrollBar skin bakes the minimalist scrollbar styling (the
-		// .a-scroll-bar rules in ThemeSkin) so the pan bar matches the diff
-		// list's own vertical scrollbar.
-		DiffScrollBar.setMin(0);
-		DiffScrollBar.setUnitIncrement(MONO_CHAR_WIDTH * 4);
-		DiffScrollBar.setVisible(false);
-		DiffScrollBar.setManaged(false);
-		PanOffset.bind(DiffScrollBar.valueProperty());
-
-		// Wheel tilt pans horizontally when the bar is shown; vertical wheel
-		// events stay with VirtualFlow (never consumed here).
-		DiffListView.addEventFilter(ScrollEvent.SCROLL, __Event ->
+		// Apply the rich-text skin (line backgrounds, intra-line highlights,
+		// primary selection fill) baked from the active palette. The previously
+		// baked URL is removed by exact match before the fresh sheet is added.
+		// Re-applies on palette switches via IThemeChangeEvent (held as a field
+		// so the weak-reference list in ThemeManager keeps it alive). The event
+		// argument is intentionally unread — the skin is always pulled from the
+		// active palette through ThemeManager, the single bake source.
+		RichTextSkinApplier = __Ignored ->
 		{
-			if (__Event.getDeltaX() != 0 && DiffScrollBar.isVisible())
-			{
-				DiffScrollBar.setValue(DiffScrollBar.getValue() + __Event.getDeltaX());
-				if (__Event.getDeltaY() == 0)
-					__Event.consume();
-			}
+			if (RichTextSkinUrl != null)
+				DiffCodeArea.getStylesheets().remove(RichTextSkinUrl);
+			var __Skin = ThemeManager.Instance.GetRichTextStylesheets();
+			RichTextSkinUrl = __Skin.get(0);
+			DiffCodeArea.getStylesheets().addAll(__Skin);
+		};
+		RichTextSkinApplier.Event(ThemeManager.Instance.GetPalette());
+		ThemeManager.Instance.AddIThemeChangeEvent(RichTextSkinApplier);
+
+		// Paragraph graphic factory: builds non-selectable line-number + prefix
+		// nodes. The CodeArea body contains only the selectable content text.
+		DiffCodeArea.setParagraphGraphicFactory(index ->
+		{
+			if (index < 0 || index >= GraphicRows.size())
+				return null;
+			GraphicLine __Line = GraphicRows.get(index);
+
+			String __OldNum = __Line.oldNum() == null
+				? " ".repeat(__Line.numWidth())
+				: String.format("%" + __Line.numWidth() + "d", __Line.oldNum());
+			String __NewNum = __Line.newNum() == null
+				? " ".repeat(__Line.numWidth())
+				: String.format("%" + __Line.numWidth() + "d", __Line.newNum());
+
+			Text __OldNumText = new Text(" " + __OldNum);
+			__OldNumText.setFont(Font.font("Consolas", 14));
+			__OldNumText.setFill(Color.GRAY);
+
+			Text __NewNumText = new Text(" " + __NewNum);
+			__NewNumText.setFont(Font.font("Consolas", 14));
+			__NewNumText.setFill(Color.GRAY);
+
+			Text __PrefixText = new Text(" " + __Line.prefix() + " ");
+			__PrefixText.setFont(Font.font("Consolas", 14));
+			if (__Line.prefix() == '+')
+				__PrefixText.setFill(Color.web("#2da44e"));
+			else if (__Line.prefix() == '-')
+				__PrefixText.setFill(Color.web("#cf222e"));
+			else
+				__PrefixText.setFill(Color.GRAY);
+
+			HBox __Graphic = new HBox(__OldNumText, __NewNumText, __PrefixText);
+			__Graphic.setAlignment(Pos.CENTER_LEFT);
+			return __Graphic;
 		});
 
-		// Re-fit the pan range when the pane is resized.
-		DiffListView.widthProperty().addListener((__Obs, __Old, __New) -> UpdateScrollRange());
+		// VirtualizedScrollPane wraps the CodeArea to provide visible vertical
+		// and horizontal scrollbars. The raw CodeArea is a Virtualized component
+		// that virtualizes content but does not render scrollbar widgets.
+		DiffScrollPane = new VirtualizedScrollPane<>(DiffCodeArea);
+
+		// Tag the scrollbars inside the VirtualizedScrollPane with
+		// .a-scroll-bar so the ScrollBarSkin (transparent track, thin rounded
+		// thumb, no arrows) is applied. Re-applies on palette switches via
+		// IThemeChangeEvent (held as a field so the weak-reference list in
+		// ThemeManager keeps it alive). The scrollbars are found via CSS
+		// lookup because VirtualizedScrollPane does not expose getter methods.
+		ScrollBarSkinApplier = __Palette ->
+		{
+			var __Skin = ThemeManager.Instance.GetScrollBarStylesheets();
+			for (var __Node : DiffScrollPane.lookupAll(".scroll-bar"))
+			{
+				if (__Node instanceof javafx.scene.control.ScrollBar __Bar)
+				{
+					if (!__Bar.getStyleClass().contains("a-scroll-bar"))
+						__Bar.getStyleClass().add("a-scroll-bar");
+					__Bar.getStylesheets().clear();
+					__Bar.getStylesheets().addAll(__Skin);
+				}
+			}
+		};
+		ScrollBarSkinApplier.Event(null);
+		ThemeManager.Instance.AddIThemeChangeEvent(ScrollBarSkinApplier);
 
 		// Stats header bar (added/removed line counts). Starts hidden and
 		// un-managed so it collapses to no height until a diff is rendered
-		// (see UpdateStatsHeader); kept in the same VBox as the list and pan
-		// bar so it sits above the diff and is never panned.
+		// (see UpdateStatsHeader); kept in the same VBox as the code area
+		// so it sits above the diff.
 		txt_StatsLabel = new AText("Changes:", ETextVariant.MONO_MUTED, STATS_FONT_SIZE);
 		txt_AddedCount = new AText("+0", ETextVariant.MONO_ADDED, STATS_FONT_SIZE);
 		txt_RemovedCount = new AText("-0", ETextVariant.MONO_REMOVED, STATS_FONT_SIZE);
@@ -318,10 +299,15 @@ public class TextViewerWidget extends BaseWidget
 		hbox_StatsHeader.setManaged(false);
 		hbox_StatsHeader.setVisible(false);
 
-		// Stack the list above the pan scrollbar; the list grows to fill the
-		// remaining height while the bar stays pinned to the bottom edge.
-		VBox __Container = new VBox(hbox_StatsHeader, DiffListView, DiffScrollBar);
-		VBox.setVgrow(DiffListView, Priority.ALWAYS);
+		// Stack the stats header above the code area; the code area grows to fill
+		// the remaining height. The VBox is given MAX_VALUE bounds so the parent
+		// StackPane lets it fill the available space — without this, StackPane
+		// uses the VBox's preferred size and the CodeArea overflows without
+		// showing scrollbars.
+		VBox __Container = new VBox(hbox_StatsHeader, DiffScrollPane);
+		VBox.setVgrow(DiffScrollPane, Priority.ALWAYS);
+		__Container.setMaxWidth(Double.MAX_VALUE);
+		__Container.setMaxHeight(Double.MAX_VALUE);
 		getChildren().add(__Container);
 
 		OverlayPane = new StackPane();
@@ -331,11 +317,9 @@ public class TextViewerWidget extends BaseWidget
 
 		// Re-render only when a refresh scan re-observes the displayed FileChange
 		// (its scan timestamp was advanced); ignoring unrelated files keeps their
-		// pan/scroll state intact. The broadcast fires on the operator runner
-		// thread so the membership check runs there and the reload on the FX
-		// thread, re-checked there in case the selection moved in between.
-		// Identity match is sufficient: the broadcast carries the preserved
-		// instances, and raw-diff viewers (FileChangeTarget == null) never match.
+		// state intact. The broadcast fires on the operator runner thread so the
+		// membership check runs there and the reload on the FX thread, re-checked
+		// there in case the selection moved in between.
 		ScannedFilesUpdatedEventListener = (_UpdatedFiles) ->
 		{
 			FileChange __Current = FileChangeTarget;
@@ -500,10 +484,9 @@ public class TextViewerWidget extends BaseWidget
 		Debug.Log(Debug.ChangesCategory, "[Changes] SetFileChange(%s)\n", _FileChangeTarget == null ? "<null>" : _FileChangeTarget.GetFilePath().toString());
 		FileChangeTarget = _FileChangeTarget;
 
-		// Clear the previous file's rows and the horizontal pan state up front:
-		// the loading indicator and any guard message (binary / large file) then
-		// render over an empty viewport instead of overlapping the previous
-		// file's diff and a stale scrollbar.
+		// Clear the previous file's rows up front: the loading indicator and any
+		// guard message (binary / large file) then render over an empty viewport
+		// instead of overlapping the previous file's diff.
 		ClearDiffView();
 
 		if (FileChangeTarget == null)
@@ -518,10 +501,10 @@ public class TextViewerWidget extends BaseWidget
 
 	/**
 	 * Renders raw unified-diff text (e.g. {@code git diff <stash>^ <stash>} output)
-	 * through the same virtualized, intra-line-highlighted pipeline as
-	 * {@link #SetFileChange}. The diff text is parsed and prepared off the JavaFX
-	 * thread; stale responses (a newer request superseding this one) are dropped.
-	 * A {@code null} or blank payload clears the viewport.
+	 * through the same highlighted pipeline as {@link #SetFileChange}. The diff text
+	 * is parsed and prepared off the JavaFX thread; stale responses (a newer request
+	 * superseding this one) are dropped. A {@code null} or blank payload clears the
+	 * viewport.
 	 * <p>
 	 * <strong>Must be called on the JavaFX Application Thread.</strong>
 	 */
@@ -557,21 +540,19 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
-	 * Empties the diff list and resets the horizontal pan state (content width,
-	 * pan position and scrollbar visibility) and the stats header (back to
-	 * {@code +0/-0}, hidden). Called when switching targets so no stale rows, a
-	 * stale scrollbar, or a stale count linger behind the overlay; also called
-	 * for a {@code null} target to blank the viewport entirely.
+	 * Clears the {@link #DiffCodeArea} text, resets the paragraph graphic
+	 * factory data ({@link #GraphicRows}), and hides the stats header (back
+	 * to {@code +0/-0}). Called when switching targets so no stale content
+	 * lingers behind the overlay; also called for a {@code null} target to
+	 * blank the viewport entirely.
 	 * <p>
 	 * <strong>Must be called on the JavaFX Application Thread.</strong>
 	 */
 	private void ClearDiffView()
 	{
-		DiffListView.getItems().clear();
-		DiffContentWidth.set(0);
-		DiffScrollBar.setValue(0);
+		DiffCodeArea.clear();
+		GraphicRows.clear();
 		UpdateStatsHeader(0, 0);
-		UpdateScrollRange();
 	}
 
 	/**
@@ -625,7 +606,7 @@ public class TextViewerWidget extends BaseWidget
 	/**
 	 * Pairs and renders the parsed diff lines for the given target.
 	 * Phase 1 (pairing + intra-line LCS) runs on the current (non-JavaFX) thread;
-	 * Phase 2 flushes the created nodes to the JavaFX thread in one shot.
+	 * Phase 2 flushes the styled text to the CodeArea on the JavaFX thread.
 	 */
 	private void RenderDiffLines(FileChange _Target, List<FileChange.LineChange> _DiffLines)
 	{
@@ -641,7 +622,7 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
-	 * Shows a centered "Loading..." overlay on top of the diff list.
+	 * Shows a centered "Loading..." overlay on top of the diff area.
 	 */
 	private void ShowLoadingIndicator()
 	{
@@ -651,7 +632,7 @@ public class TextViewerWidget extends BaseWidget
 
 	/**
 	 * Shows a non-interactive guard message (e.g. binary files) centered over the
-	 * diff list.
+	 * diff area.
 	 */
 	private void RenderGuardMessage(String _Message)
 	{
@@ -686,7 +667,7 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
-	 * Renders an error message (from a failed diff load) centered over the diff list.
+	 * Renders an error message (from a failed diff load) centered over the diff area.
 	 */
 	private void RenderErrorMessage(Throwable _Exception)
 	{
@@ -707,7 +688,7 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
-	 * Shows a centered overlay on top of the diff list (loading / messages / prompt).
+	 * Shows a centered overlay on top of the diff area (loading / messages / prompt).
 	 */
 	private void ShowOverlay(Node _Content)
 	{
@@ -717,7 +698,7 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
-	 * Hides the overlay so only the diff list is visible.
+	 * Hides the overlay so only the diff area is visible.
 	 */
 	private void HideOverlay()
 	{
@@ -807,316 +788,81 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
-	 * Publishes the prepared rows to the virtualized diff list. The widest line
+	 * Renders the prepared rows into the {@link #DiffCodeArea}. The widest line
 	 * number is computed once here (a cheap pass over the plain-data records) so
-	 * every row aligns to the same padding, {@link #DiffContentWidth} is set to
-	 * the widest-row width, and the bottom scrollbar is reset to the un-panned
-	 * position before {@link #UpdateScrollRange} re-derives its pan range and
-	 * visibility. Only the visible rows are materialized by VirtualFlow, so a huge
-	 * diff renders instantly.
+	 * every row aligns to the same padding in the paragraph graphic. The CodeArea
+	 * body contains only the selectable content text; line numbers and prefix
+	 * characters are rendered by the paragraph graphic factory.
+	 * <p>
+	 * After the text is replaced, paragraph styles (backgrounds) and intra-line
+	 * text styles (intra-line highlight backgrounds) are applied.
 	 * <p>
 	 * <strong>Must be called on the JavaFX Application Thread.</strong>
 	 */
 	private void SetDiffRows(List<PreparedRow> _Prepared)
 	{
-		// Determine the widest line number for padding alignment and, in the
-		// same pass, count the added/removed rows for the stats header.
-		int __MaxNum = 0;
-		int __Added = 0;
-		int __Removed = 0;
+		// Count added/removed for stats header
+		int __Added = 0, __Removed = 0, __MaxNum = 0;
 		for (var __Row : _Prepared)
 		{
-			if (__Row.prefix() == '+')
-				__Added++;
-			else if (__Row.prefix() == '-')
-				__Removed++;
-			if (__Row.oldLineNumber() != null)
-				__MaxNum = Math.max(__MaxNum, __Row.oldLineNumber());
-			if (__Row.newLineNumber() != null)
-				__MaxNum = Math.max(__MaxNum, __Row.newLineNumber());
+			if (__Row.prefix() == '+') __Added++;
+			else if (__Row.prefix() == '-') __Removed++;
+			if (__Row.oldLineNumber() != null) __MaxNum = Math.max(__MaxNum, __Row.oldLineNumber());
+			if (__Row.newLineNumber() != null) __MaxNum = Math.max(__MaxNum, __Row.newLineNumber());
 		}
 		int __NumWidth = Math.max(1, String.valueOf(__MaxNum).length());
-		NumFormat = "%" + __NumWidth + "d";
-		EmptyNum = " ".repeat(__NumWidth);
 		UpdateStatsHeader(__Added, __Removed);
 
-		// Publish the widest-row width; the bottom scrollbar's range and
-		// visibility are derived from it vs the pane width.
-		DiffContentWidth.set(ComputeContentWidth(_Prepared, __NumWidth));
-		DiffScrollBar.setValue(0);   // a new file starts un-panned
-		UpdateScrollRange();
+		// Populate GraphicRows for the paragraph graphic factory
+		GraphicRows.clear();
+		for (var __Row : _Prepared)
+			GraphicRows.add(new GraphicLine(__Row.prefix(), __Row.oldLineNumber(), __Row.newLineNumber(), __NumWidth));
 
-		DiffListView.getItems().setAll(_Prepared);
-		// refresh() forces VirtualFlow to rebuild the visible cells even when the
-		// new diff has the same row count — otherwise recycled cells would keep
-		// showing the previous file's rows (setAll alone only rebuilds on count change).
-		DiffListView.refresh();
-		DiffListView.scrollTo(0);
-		HideOverlay();
-	}
-
-	/**
-	 * Recomputes the horizontal pan range from the current content width and the
-	 * pane width, and shows/hides the bottom scrollbar accordingly.
-	 * <p>
-	 * The scrollbar's {@code max} is set to {@code contentWidth} (not
-	 * {@code maxPan}) because JavaFX internally clamps the effective scroll
-	 * range to {@code [0, max - visibleAmount]}.  When {@code visibleAmount}
-	 * equals the viewport width, {@code effectiveMax = contentWidth - viewport
-	 * = maxPan}, allowing the full content to be revealed at max scroll.
-	 * The {@code visibleAmount} is proportional ({@code viewport / content}),
-	 * clamped between {@link #PAN_MIN_VISIBLE_FRACTION} and
-	 * {@link #PAN_MAX_VISIBLE_FRACTION} so the thumb stays draggable for
-	 * extremely wide diffs and leaves a visible scroll sliver when the content
-	 * barely overflows.
-	 * <p>
-	 * <strong>Must be called on the JavaFX Application Thread.</strong>
-	 */
-	private void UpdateScrollRange()
-	{
-		double __Content = DiffContentWidth.get();
-		double __Viewport = DiffListView.getWidth();
-		double __MaxPan = Math.max(0, __Content - __Viewport);
-		boolean __NeedsBar = __MaxPan > 0;
-		DiffScrollBar.setVisible(__NeedsBar);
-		DiffScrollBar.setManaged(__NeedsBar);
-
-		// Set max = contentWidth (not maxPan). JavaFX internally clamps the
-		// effective scroll range to [0, max - visibleAmount], so setting
-		// max = contentWidth yields effectiveMax = contentWidth - visibleAmount.
-		// When visibleAmount = viewport, effectiveMax = contentWidth - viewport
-		// = maxPan, allowing the full content to be revealed at max scroll.
-		DiffScrollBar.setMax(__Content);
-
-		// The thumb size reflects how much of the total content is visible.
-		// Proportional: viewport / content. Clamped between MIN and MAX fractions
-		// so a very wide diff keeps a draggable thumb and a near-fitting one
-		// keeps a visible scroll sliver.
-		double __Visible = Math.min(Math.max(__Viewport, __Content * PAN_MIN_VISIBLE_FRACTION), __Content * PAN_MAX_VISIBLE_FRACTION);
-		DiffScrollBar.setVisibleAmount(__Visible);
-
-		// Block increment = ~80% of viewport, capped at the remaining pan range.
-		DiffScrollBar.setBlockIncrement(Math.min(__Viewport * 0.8, __MaxPan));
-
-		// Clamp the current value if it exceeds the new effective range.
-		double __EffectiveMax = __Content - __Visible;
-		if (DiffScrollBar.getValue() > __EffectiveMax)
-			DiffScrollBar.setValue(Math.max(0, __EffectiveMax));
-	}
-
-	/**
-	 * Computes the pixel width needed to show the widest diff row without clipping:
-	 * fixed-width text columns (line numbers, prefix, spacer) plus the longest
-	 * content line, scaled by the mono font's character advance. The result is
-	 * published to {@link #DiffContentWidth}, which drives the bottom scrollbar's
-	 * pan range (the list itself always fills the pane).
-	 */
-	private static double ComputeContentWidth(List<PreparedRow> _Rows, int _NumWidth)
-	{
-		int __MaxContentChars = 0;
-		for (var __Row : _Rows)
+		// Build full text: ONLY content lines (no bar, no numbers, no prefix)
+		StringBuilder __FullText = new StringBuilder();
+		for (int i = 0; i < _Prepared.size(); i++)
 		{
-			String __Text = __Row.text();
-			if (__Text != null)
-				__MaxContentChars = Math.max(__MaxContentChars, __Text.length());
+			if (i > 0) __FullText.append('\n');
+			String __Content = _Prepared.get(i).text();
+			__FullText.append(__Content != null ? __Content : "");
 		}
 
-		// Fixed text columns: old number (numWidth+1), new number (numWidth+1),
-		// prefix (2), content spacer (1).
-		int __FixedChars = 2 * (_NumWidth + 1) + 2 + 1;
-		return BAR_WIDTH + (__FixedChars + __MaxContentChars) * MONO_CHAR_WIDTH + CELL_H_PADDING;
-	}
+		// Replace the CodeArea text
+		DiffCodeArea.replaceText(0, DiffCodeArea.getLength(), __FullText.toString());
 
-	/**
-	 * Builds the JavaFX nodes for one diff row (bar + line numbers + prefix +
-	 * content text) from a pre-computed {@link PreparedRow}. The green/red row
-	 * background is not set here — it goes on the {@link ListCell} so it spans the
-	 * full cell width and height.
-	 *
-	 * @param _Row       the pre-computed row data (produced off-thread)
-	 * @param _NumFormat format string for line numbers
-	 * @param _EmptyNum  blank placeholder when a line number is absent
-	 */
-	private static HBox CreateRowBox(PreparedRow _Row, String _NumFormat, String _EmptyNum)
-	{
-		HBox rowBox = new HBox();
-		boolean added = _Row.prefix() == '+';
-		boolean removed = _Row.prefix() == '-';
-
-		// Colour-coded left bar
-		Pane bar = new Pane();
-		bar.setMinWidth(4);
-		bar.setPrefWidth(4);
-		if (added)
-			bar.setStyle("-fx-background-color: " + ADDED_BAR + ";");
-		else if (removed)
-			bar.setStyle("-fx-background-color: " + REMOVED_BAR + ";");
-		else
-			bar.setStyle("-fx-background-color: transparent;");
-
-		// Line numbers
-		String oldStr = _Row.oldLineNumber() == null ? _EmptyNum : String.format(_NumFormat, _Row.oldLineNumber());
-		String newStr = _Row.newLineNumber() == null ? _EmptyNum : String.format(_NumFormat, _Row.newLineNumber());
-
-		Text oldNum = new Text(" " + oldStr);
-		oldNum.setFont(MONO_FONT);
-		oldNum.setFill(Color.GRAY);
-
-		Text newNum = new Text(" " + newStr);
-		newNum.setFont(MONO_FONT);
-		newNum.setFill(Color.GRAY);
-
-		// Prefix character
-		Text prefixText = new Text(" " + _Row.prefix());
-		prefixText.setFont(MONO_FONT);
-		if (added)
-			prefixText.setFill(Color.rgb(45, 164, 78));
-		else if (removed)
-			prefixText.setFill(Color.rgb(207, 34, 46));
-		else
-			prefixText.setFill(Color.GRAY);
-
-		// Content — either intra-line segments or plain text
-		HBox content = CreateContentNode(_Row.prefix(), _Row.text(), _Row.intraSegments());
-
-		rowBox.getChildren().addAll(bar, oldNum, newNum, prefixText, content);
-		return rowBox;
-	}
-
-	/**
-	 * Inline cell background for the row type, or empty for context rows.
-	 */
-	private static String RowBackgroundStyle(char _Prefix)
-	{
-		if (_Prefix == '+')
-			return "-fx-background-color: " + ADDED_BG + ";";
-		if (_Prefix == '-')
-			return "-fx-background-color: " + REMOVED_BG + ";";
-		return "";
-	}
-
-	/**
-	 * Computes the uniform ListView row height by measuring a sample diff row.
-	 * Pinning a fixed cell size makes VirtualFlow's scroll-range math exact — the
-	 * same workaround used by {@link ChangesWidget} for the JDK VirtualFlow
-	 * size-estimation regression (JDK-8296871 / JDK-8301375 / JDK-8328167).
-	 */
-	private double ComputeFixedCellSize()
-	{
-		try
+		// Apply paragraph styles (backgrounds) and intra-line text styles only.
+		// Line numbers and prefix are in the paragraph graphic — not in the text.
+		int __Offset = 0;
+		for (int i = 0; i < _Prepared.size(); i++)
 		{
-			HBox __Sample = CreateRowBox(new PreparedRow(' ', 1, 1, "Ag", null), "%d", " ");
-			__Sample.applyCss();
-			double __Height = Math.ceil(__Sample.prefHeight(-1) + LIST_CELL_VERTICAL_PADDING);
-			return __Height >= DEFAULT_ROW_HEIGHT ? __Height : DEFAULT_ROW_HEIGHT;
-		}
-		catch (Exception __Ex)
-		{
-			return DEFAULT_ROW_HEIGHT;
-		}
-	}
+			var __Row = _Prepared.get(i);
 
-	/**
-	 * ListCell used for diff rows. Cells are recycled by VirtualFlow, so
-	 * {@code updateItem} resets every property and re-derives the row graphic
-	 * from the {@link PreparedRow}. The inline background overrides the
-	 * {@code :selected} / {@code :hover} cell backgrounds so the green/red row
-	 * colour stays stable.
-	 * <p>
-	 * The row HBox is wrapped in a minimal-width {@link StackPane} so the cell's
-	 * <em>preferred</em> width stays tiny: VirtualFlow shows the ListView's own
-	 * horizontal scrollbar whenever a cell's preferred width exceeds the
-	 * viewport, which would duplicate the pan scrollbar below the list. The
-	 * wrapper keeps the built-in bar suppressed while the row still lays out at
-	 * its natural width inside the viewport-sized cell (see {@code updateItem}).
-	 */
-	private final class DiffRowCell extends ListCell<PreparedRow>
-	{
-		@Override
-		protected void updateItem(PreparedRow _Row, boolean _Empty)
-		{
-			super.updateItem(_Row, _Empty);
-			setText(null);
-
-			if (_Empty || _Row == null)
-			{
-				setGraphic(null);
-				setStyle("");
-				return;
-			}
-
-			setStyle(RowBackgroundStyle(_Row.prefix()));
-			HBox __RowBox = CreateRowBox(_Row, NumFormat, EmptyNum);
-			// Pan wide rows by translating the row content (bar + numbers + prefix
-			// + text) inside the viewport-sized cell; the ListView itself never
-			// exceeds the pane, so its vertical scrollbar stays visible.
-			__RowBox.translateXProperty().bind(PanOffset.negate());
-			// Wrap the row in a pane that reports a minimal preferred width so
-			// VirtualFlow never shows the ListView's own horizontal scrollbar
-			// (which would sit above the pan scrollbar — a duplicated bar).
-			// The cell sizes the wrapper to at most the viewport width and the
-			// row inside lays out at its natural width, overflowing to the right
-			// where it is clipped by the viewport and revealed by the pan offset.
-			StackPane __PanViewport = new StackPane(__RowBox);
-			__PanViewport.setAlignment(Pos.TOP_LEFT);
-			__PanViewport.setMinWidth(0);
-			__PanViewport.setPrefWidth(1);
-			setGraphic(__PanViewport);
-		}
-	}
-
-	/**
-	 * Creates the content node for a diff row.
-	 * <p>
-	 * When {@code intraSegments} is non-null the content is an {@link HBox} with
-	 * individual {@link Text} / {@link StackPane} nodes per segment so that
-	 * changed tokens get a background highlight.  Otherwise a plain {@link Text}
-	 * node is returned.
-	 *
-	 * @param prefix        the diff prefix character ({@code '+'}, {@code '-'}, or {@code ' '})
-	 * @param text          the raw line text
-	 * @param intraSegments intra-line styled segments (nullable)
-	 */
-	private static HBox CreateContentNode(char prefix, String text, List<StyledSegment> intraSegments)
-	{
-		boolean added = prefix == '+';
-		boolean removed = prefix == '-';
-
-		// Leading visual space (separates content from the prefix character)
-		Text spacer = new Text(" ");
-		spacer.setFont(MONO_FONT);
-
-		if (intraSegments == null || intraSegments.isEmpty())
-		{
-			// Plain text (pure addition/removal or context line)
-			Text plain = new Text(text);
-			plain.setFont(MONO_FONT);
-			HBox box = new HBox(0);
-			box.getChildren().addAll(spacer, plain);
-			return box;
-		}
-
-		// Styled segments with possible intra-line highlighting
-		String intraBg = added ? ADDED_INTRA_BG : REMOVED_INTRA_BG;
-		HBox box = new HBox(0);
-		box.getChildren().add(spacer);
-
-		for (StyledSegment seg : intraSegments)
-		{
-			Text segText = new Text(seg.text());
-			segText.setFont(MONO_FONT);
-
-			if (seg.highlighted())
-			{
-				StackPane highlightPane = new StackPane(segText);
-				highlightPane.setStyle("-fx-background-color: " + intraBg + ";");
-				box.getChildren().add(highlightPane);
-			}
+			// Paragraph background
+			if (__Row.prefix() == '+')
+				DiffCodeArea.setParagraphStyle(i, List.of("diff-line-added"));
+			else if (__Row.prefix() == '-')
+				DiffCodeArea.setParagraphStyle(i, List.of("diff-line-removed"));
 			else
+				DiffCodeArea.setParagraphStyle(i, List.of());
+
+			// Intra-line highlights on content
+			if (__Row.intraSegments() != null && !__Row.intraSegments().isEmpty())
 			{
-				box.getChildren().add(segText);
+				String __IntraClass = __Row.prefix() == '+' ? "diff-intra-added" : "diff-intra-removed";
+				int __Pos = __Offset;
+				for (var __Seg : __Row.intraSegments())
+				{
+					if (__Seg.highlighted())
+						DiffCodeArea.setStyle(__Pos, __Pos + __Seg.text().length(), List.of(__IntraClass));
+					__Pos += __Seg.text().length();
+				}
 			}
+			String __Content = __Row.text();
+			__Offset += (__Content != null ? __Content.length() : 0);
+			if (i < _Prepared.size() - 1) __Offset++; // newline
 		}
-		return box;
+
+		DiffCodeArea.moveTo(0, 0);
+		HideOverlay();
 	}
 }
