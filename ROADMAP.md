@@ -203,6 +203,12 @@ Items that were discussed and have been committed to `master`.
       `DialogSkin`; `TextAlternateColor` palette slot replaces hardcoded `#ffffff` in
       `ListViewSkin` selected text and combo-box popup; light theme primary/secondary colors
       lightened (`8e1d966`)
+- [x] **Grouped discard of multiple changes** — `ChangeEntryWidget.DiscardChange()` delegates to
+      `ChangesWidget.DiscardGroupedChange()` which gathers all selected non-header entries, groups
+      by discard type (untracked, staged tracked, unstaged tracked), confirms multi-select, then
+      discards untracked files via recycle bin (fallback to permanent delete) and tracked files via
+      git restore commands; ordering ensures untracked deletions precede tracked resets to avoid
+      re-creation conflicts (`7025c31`)
 
 ---
 
