@@ -178,97 +178,12 @@ class ChangeEntryWidget extends HBox implements IObject
 	/**
 	 * Discard the change for this file, reverting it to its last committed
 	 * state (tracked files) or removing it from the working tree (untracked
-	 * files).  The method refreshes the UI so the entry disappears from the
-	 * list once the operation completes.  Errors are surfaced in a dialog
-	 * rather than thrown.
-	 * <ul>
-	 *   <li><b>Untracked</b> (Added + UNSTAGED): moves the file to the OS
-	 *       recycle bin via {@link Desktop#moveToTrash} so the user can
-	 *       recover it if needed.  If that fails (e.g. unsupported volume),
-	 *       the user is prompted to delete permanently.</li>
-	 *   <li><b>Staged</b>: runs {@code git reset HEAD --} then
-	 *       {@code git checkout --} to unstage and discard the working-tree
-	 *       change in a single queued operation.</li>
-	 *   <li><b>Unstaged tracked</b>: runs {@code git checkout --} to discard
-	 *       the working-tree change via a single queued operation.</li>
-	 * </ul>
+	 * files).  When multiple rows are selected the whole selection is
+	 * discarded together via {@link ChangesWidget#DiscardGroupedChange()}.
 	 */
 	private void DiscardChange()
 	{
-		GitDir __GitDir = ChangesWidget.GetGitDirTarget();
-		Path __FilePath = FileChangeTarget.GetFilePath();
-
-		// ── Untracked file: move to recycle bin ──
-		if (FileChangeTarget.GetStatus() == EFileChangeStatus.Added
-				&& FileChangeTarget.GetScope() == EFileChangeScope.UNSTAGED)
-		{
-			if (Desktop.getDesktop().moveToTrash(__FilePath.toFile()))
-			{
-				__GitDir.GetOperator().Refresh(ERefreshPolicy.REFRESH_AND_UPDATE_UI);
-				return;
-			}
-
-			// Trash not supported or failed — ask before permanent delete.
-			Platform.runLater(() ->
-			{
-				Alert __Confirm = new Alert(Alert.AlertType.CONFIRMATION);
-				ThemeManager.Instance.ApplyThemeToDialog(__Confirm);
-				__Confirm.setTitle("Discard Change");
-				__Confirm.setHeaderText("Cannot move to Recycle Bin");
-				__Confirm.setContentText("Move to Recycle Bin is unavailable for this file.\nDelete permanently?");
-				__Confirm.showAndWait().ifPresent(__Result ->
-				{
-					if (__Result == ButtonType.OK)
-					{
-						try
-						{
-							Files.deleteIfExists(__FilePath);
-							__GitDir.GetOperator().Refresh(ERefreshPolicy.REFRESH_AND_UPDATE_UI);
-						}
-						catch (IOException __DelEx)
-						{
-							Alert __Err = new Alert(Alert.AlertType.ERROR);
-							ThemeManager.Instance.ApplyThemeToDialog(__Err);
-							__Err.setTitle("Discard Failed");
-							__Err.setHeaderText("Failed to delete file");
-							__Err.setContentText(__DelEx.getMessage());
-							__Err.showAndWait();
-						}
-					}
-				});
-			});
-			return;
-		}
-
-		// ── Tracked file: git reset (if staged) + git checkout ──
-		String __RelPath = __GitDir.GetRepoRootPath().relativize(__FilePath).toString();
-		List<String> __Cmd = new ArrayList<>();
-		if (FileChangeTarget.GetScope() == EFileChangeScope.STAGED)
-		{
-			__Cmd.add("reset");
-			__Cmd.add("HEAD");
-			__Cmd.add("--");
-			__Cmd.add(":(literal)" + __RelPath);
-		}
-		__Cmd.add("checkout");
-		__Cmd.add("--");
-		__Cmd.add(":(literal)" + __RelPath);
-
-		__GitDir.GetOperator().RunGitOp(__Cmd, ERefreshPolicy.REFRESH_AND_UPDATE_UI, (__Ok, __Err, __Dir) ->
-		{
-			if (!__Ok)
-			{
-				Platform.runLater(() ->
-				{
-					Alert __Alert = new Alert(Alert.AlertType.ERROR);
-					ThemeManager.Instance.ApplyThemeToDialog(__Alert);
-					__Alert.setTitle("Discard Failed");
-					__Alert.setHeaderText("Failed to discard change");
-					__Alert.setContentText(__Err);
-					__Alert.showAndWait();
-				});
-			}
-		});
+		ChangesWidget.DiscardGroupedChange();
 	}
 
 	/**
@@ -726,5 +641,253 @@ public class ChangesWidget extends BaseWidget
 				// can't be double-submitted while the command is still in flight.
 			});
 		});
+	}
+
+	// ------------------------------------------------------------------
+	//  Context menu actions — discard
+	// ------------------------------------------------------------------
+
+	/**
+	 * Gather the full multi-selection (or fall back to a single entry when
+	 * only one row is selected), confirm when multiple, then discard in
+	 * grouped batches: untracked filesystem ops first, then tracked git
+	 * operations queued through the operator.
+	 * <p>
+	 * Discard order matters: untracked files are deleted from the filesystem
+	 * first (move to trash or permanent delete), then tracked files are
+	 * reverted via git commands. This avoids a window where a tracked reset
+	 * would re-create a file that was just deleted as untracked.
+	 */
+	void DiscardGroupedChange()
+	{
+		GitDir __GitDir = GetGitDirTarget();
+
+		// ── Gather all selected non-header entries ──
+		List<ChangeEntryWidget> __Selected = new ArrayList<>();
+		for (ChangeEntryWidget __Entry : ChangesListView.getSelectionModel().getSelectedItems())
+		{
+			if (__Entry != null && !__Entry.IsHeader && __Entry.GetFileChange() != null)
+				__Selected.add(__Entry);
+		}
+		if (__Selected.isEmpty())
+			return;
+
+		// ── Group by discard type ──
+		// Untracked: Added + UNSTAGED (new files never committed).
+		// Staged tracked: any tracked file in the staging area (reset + checkout).
+		// Unstaged tracked: any tracked file not staged (checkout only).
+		List<ChangeEntryWidget> __Untracked = new ArrayList<>();
+		List<ChangeEntryWidget> __StagedTracked = new ArrayList<>();
+		List<ChangeEntryWidget> __UnstagedTracked = new ArrayList<>();
+		for (ChangeEntryWidget __Entry : __Selected)
+		{
+			FileChange __Fc = __Entry.GetFileChange();
+			if (__Fc.GetStatus() == EFileChangeStatus.Added && __Fc.GetScope() == EFileChangeScope.UNSTAGED)
+				__Untracked.add(__Entry);
+			else if (__Fc.GetScope() == EFileChangeScope.STAGED)
+				__StagedTracked.add(__Entry);
+			else
+				__UnstagedTracked.add(__Entry);
+		}
+
+		int __Total = __Selected.size();
+
+		// ── Confirmation for multi-select ──
+		if (__Total > 1)
+		{
+			Platform.runLater(() ->
+			{
+				Alert __Confirm = new Alert(Alert.AlertType.CONFIRMATION);
+				ThemeManager.Instance.ApplyThemeToDialog(__Confirm);
+				__Confirm.setTitle("Discard Changes");
+				__Confirm.setHeaderText("Discard " + __Total + " changes?");
+				__Confirm.setContentText("This action cannot be undone.");
+				__Confirm.showAndWait().ifPresent(__Result ->
+				{
+					if (__Result == ButtonType.OK)
+						DiscardUntrackedFiles(__GitDir, __Untracked, __StagedTracked, __UnstagedTracked);
+				});
+			});
+		}
+		else
+		{
+			// Single file — no confirmation needed.
+			DiscardUntrackedFiles(__GitDir, __Untracked, __StagedTracked, __UnstagedTracked);
+		}
+	}
+
+	/**
+	 * Discard untracked files (move to trash or permanent delete), then hand
+	 * off to tracked files.  Trash failures are batched into a single
+	 * confirmation prompt; if the user declines, no further operations
+	 * (tracked git commands) are queued.
+	 * <p>
+	 * The trash-to-permanent-delete fallback is two-phase: first attempt
+	 * {@link java.awt.Desktop#moveToTrash} for each file, collecting failures;
+	 * if any fail, prompt once for permanent deletion.  Declining aborts the
+	 * entire discard chain — tracked files are left untouched.
+	 */
+	private void DiscardUntrackedFiles(GitDir _GitDir, List<ChangeEntryWidget> _Untracked,
+			List<ChangeEntryWidget> _StagedTracked, List<ChangeEntryWidget> _UnstagedTracked)
+	{
+		if (!_Untracked.isEmpty())
+		{
+			// Attempt to move each file to the recycle bin; collect failures
+			// so they can be presented in a single batch confirmation.
+			List<Path> __TrashFailed = new ArrayList<>();
+			for (ChangeEntryWidget __Entry : _Untracked)
+			{
+				Path __Path = __Entry.GetFileChange().GetFilePath();
+				if (!Desktop.getDesktop().moveToTrash(__Path.toFile()))
+					__TrashFailed.add(__Path);
+			}
+
+			if (!__TrashFailed.isEmpty())
+			{
+				// Some files couldn't be trashed — ask the user whether to
+				// delete them permanently.  If declined, abort the whole
+				// discard chain (tracked files are left untouched).
+				Platform.runLater(() ->
+				{
+					Alert __Confirm = new Alert(Alert.AlertType.CONFIRMATION);
+					ThemeManager.Instance.ApplyThemeToDialog(__Confirm);
+					__Confirm.setTitle("Discard Changes");
+					__Confirm.setHeaderText("Cannot move " + __TrashFailed.size()
+							+ (__TrashFailed.size() == 1 ? " file" : " files") + " to Recycle Bin");
+					__Confirm.setContentText("Delete permanently?");
+					__Confirm.showAndWait().ifPresent(__Result ->
+					{
+						if (__Result == ButtonType.OK)
+						{
+							DiscardDeletePermanently(__TrashFailed);
+							DiscardTrackedFiles(_GitDir, _StagedTracked, _UnstagedTracked);
+						}
+					});
+				});
+				return;
+			}
+		}
+
+		DiscardTrackedFiles(_GitDir, _StagedTracked, _UnstagedTracked);
+	}
+
+	/**
+	 * Permanently delete files that could not be moved to the recycle bin.
+	 * Called when {@link java.awt.Desktop#moveToTrash} fails and the user
+	 * confirms permanent deletion in the follow-up dialog.
+	 *
+	 * @param _Paths files to delete; each is attempted independently so a
+	 *               single failure does not block the rest
+	 */
+	private void DiscardDeletePermanently(List<Path> _Paths)
+	{
+		for (Path __Path : _Paths)
+		{
+			try
+			{
+				Files.deleteIfExists(__Path);
+			}
+			catch (IOException __Ex)
+			{
+				Debug.Log(Debug.ChangesCategory, "[Changes] Failed to delete %s: %s\n",
+						__Path, __Ex.getMessage());
+			}
+		}
+	}
+
+	/**
+	 * Queue {@code git restore} operations for tracked files.  Staged files
+	 * are restored in two steps: {@code git restore --staged} unstage without
+	 * touching the working tree, then {@code git restore} discards the
+	 * working-tree changes — both batched into single commands via
+	 * {@link GitOperator#RunGitOp}.  Unstaged files need only the second
+	 * step.  A full UI refresh is always triggered so the changes list
+	 * reflects both the preceding untracked filesystem deletes and the
+	 * restore results.
+	 * <p>
+	 * When only untracked files were discarded (no git commands queued), an
+	 * explicit refresh is triggered so the list updates after the filesystem
+	 * deletes.
+	 *
+	 * @param _GitDir        the repository
+	 * @param _StagedTracked staged tracked entries (need --staged + working-tree restore)
+	 * @param _UnstagedTracked unstaged tracked entries (working-tree restore only)
+	 */
+	private void DiscardTrackedFiles(GitDir _GitDir, List<ChangeEntryWidget> _StagedTracked,
+			List<ChangeEntryWidget> _UnstagedTracked)
+	{
+		Path __RepoRoot = _GitDir.GetRepoRootPath();
+
+		// ── Staged tracked: git restore --staged (unstage) then git restore (discard) ──
+		// Two separate RunGitOp calls — no atomicity requirement because --staged only
+		// touches the index and plain restore only touches the working tree.
+		if (!_StagedTracked.isEmpty())
+		{
+			List<String> __UnstageCmd = new ArrayList<>();
+			__UnstageCmd.add("restore");
+			__UnstageCmd.add("--staged");
+			__UnstageCmd.add("--");
+			for (ChangeEntryWidget __Entry : _StagedTracked)
+				__UnstageCmd.add(":(literal)" + __RepoRoot.relativize(__Entry.GetFileChange().GetFilePath()).toString());
+
+			List<String> __RestoreCmd = new ArrayList<>();
+			__RestoreCmd.add("restore");
+			__RestoreCmd.add("--");
+			for (ChangeEntryWidget __Entry : _StagedTracked)
+				__RestoreCmd.add(":(literal)" + __RepoRoot.relativize(__Entry.GetFileChange().GetFilePath()).toString());
+
+			_GitDir.GetOperator().RunGitOp(__UnstageCmd, ERefreshPolicy.REFRESH_AND_UPDATE_UI, (__Ok, __Err, __Dir) ->
+			{
+				if (!__Ok)
+				{
+					Platform.runLater(() -> DiscardShowError(__Err));
+					return;
+				}
+				_GitDir.GetOperator().RunGitOp(__RestoreCmd, ERefreshPolicy.REFRESH_AND_UPDATE_UI, (__Ok2, __Err2, __Dir2) ->
+				{
+					if (!__Ok2)
+						Platform.runLater(() -> DiscardShowError(__Err2));
+				});
+			});
+		}
+
+		// ── Unstaged tracked: git restore -- (discard working-tree changes) ──
+		if (!_UnstagedTracked.isEmpty())
+		{
+			List<String> __RestoreCmd = new ArrayList<>();
+			__RestoreCmd.add("restore");
+			__RestoreCmd.add("--");
+			for (ChangeEntryWidget __Entry : _UnstagedTracked)
+				__RestoreCmd.add(":(literal)" + __RepoRoot.relativize(__Entry.GetFileChange().GetFilePath()).toString());
+
+			_GitDir.GetOperator().RunGitOp(__RestoreCmd, ERefreshPolicy.REFRESH_AND_UPDATE_UI, (__Ok, __Err, __Dir) ->
+			{
+				if (!__Ok)
+					Platform.runLater(() -> DiscardShowError(__Err));
+			});
+		}
+
+		// ── Untracked-only discard: no git op queued, so trigger a
+		//    refresh explicitly so the list updates to reflect the
+		//    filesystem deletes. ──
+		if (_StagedTracked.isEmpty() && _UnstagedTracked.isEmpty())
+			_GitDir.GetOperator().Refresh(ERefreshPolicy.REFRESH_AND_UPDATE_UI);
+	}
+
+	/**
+	 * Show a themed error dialog for a failed discard operation.
+	 * Called on the FX thread from discard-operation callbacks when
+	 * {@code git restore} commands fail.
+	 *
+	 * @param _Message the error text returned by the git command
+	 */
+	private static void DiscardShowError(String _Message)
+	{
+		Alert __Alert = new Alert(Alert.AlertType.ERROR);
+		ThemeManager.Instance.ApplyThemeToDialog(__Alert);
+		__Alert.setTitle("Discard Failed");
+		__Alert.setHeaderText("Failed to discard change");
+		__Alert.setContentText(_Message);
+		__Alert.showAndWait();
 	}
 }
