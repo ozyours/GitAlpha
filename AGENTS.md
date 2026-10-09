@@ -41,11 +41,12 @@ AlphaEngine (singleton: AlphaEngine.Instance — never construct a second)
   └─ Event lists (WeakReference, pruned on dead refs):
        IOpenGitDirEvent / ICloseGitDirEvent / IRefreshGitDirEvent   (com.gitalpha.Engine.GitDirContainer)
 
-AlphaUI (BorderPane) → top: TopMenuBar + QuickCommandBar (placeholder entries except Git → Stash…, see ROADMAP.md; shared "not implemented" notice: PlaceholderNotice); center: ATabWidget (modifiable: "+" affix creates tabs, per-tab × close faces, drag-to-reorder)
+AlphaUI (BorderPane) → top: TopMenuBar + QuickCommandBar (placeholder entries except Git → Stash… and Git → Branch Manager…, see ROADMAP.md; shared "not implemented" notice: PlaceholderNotice); center: ATabWidget (modifiable: "+" affix creates tabs, per-tab × close faces, drag-to-reorder)
   ├─ GitDirTabButton (plain IObject controller, no javafx Tab) → stable root StackPane hosting ProjectBrowser (path field + recent repo list); AlphaUI maps root → tab (TabsByRoot) so lookups survive reorder
   └─ OpenProject(gitDir) → GitDirWidget (StackPane) — content is an outer split pane:
-     │   left = sub-tab panel (user-resizable; width persisted globally as a plain
+     │   left = branch row + sub-tab panel (user-resizable; width persisted globally as a plain
      │          scalar in the session file via AlphaEngine):
+     │       branch = BranchWidget pinned above the tab strip (shared by both sub-tabs)
       │       header = non-modifiable ATabWidget ("Changes" / "History"; faces are its
       │                private TabButton HBox component: title Label + close ATabButton
       │                (compound .a-tab-button.a-tab-close flat rules),
@@ -54,10 +55,33 @@ AlphaUI (BorderPane) → top: TopMenuBar + QuickCommandBar (placeholder entries 
      │       content = StackPane swap (working-tree GridPane / TreeViewWidget placeholder);
      │   right = ONE shared TextViewerWidget diff viewer for both tabs
      │   the commit row is pinned (min == pref) so the changes row stays the only grower
-     ├─ BranchWidget      local/remote branch TreeViews (active branch: dot + bold green + tooltip)
+     ├─ BranchWidget      active-branch button + BranchPickerPopover (filter field + virtualized branch list grouped by namespace with collapsible headers; checkout on activation — primary click / Enter)
      ├─ ChangesWidget     ListView<ChangeEntryWidget> (staged/unstaged)
      ├─ CommitWidget      summary TextField + description TextArea + commit Button
      └─ TextViewerWidget  diff viewer (intra-line LCS highlight)
+
+BranchManagerWidget (separate Stage, launched from Git → Branch Manager… and the branch context menu;
+one per repo, deduped by a static Open(GitDir) whose onHidden removes its own map entry) → 2 columns
+  ├─ Shared BranchFilterRow: ONE filter field + expand/collapse-all buttons govern BOTH columns
+  │    (one collapse set per window; keystrokes rebuild rows from cached branches, never the live list)
+  ├─ Fixed 50/50 split, NOT adjustable: equal-split HBox (both column VBoxes prefWidth(0) + hgrow
+  │    ALWAYS, so the remainder splits into exact halves) with a pinned 1px Region separator — there
+  │    is no divider node to drag; window resizes only stretch the lists (each column's detail footer
+  │    is pinned min==pref==max with no vgrow, and the lists carry vgrow ALWAYS)
+  ├─ Per-column fixed-height detail footer (GridPane: caption | value, top border = palette color):
+  │    Name = branch full path, Linked = its upstream (local) / every local tracking it (remote);
+  │    em-dash + MUTED when nothing is selected; value Labels ellipsize (minWidth 0 + ELLIPSIS);
+  │    value styles are ETextVariant CSS with `-fx-fill:` swapped to `-fx-text-fill:` for Labels
+  ├─ Left:  local branch tree   — cell shows `leaf (origin/main)` when linked
+  ├─ Right: remote branch tree  — cell shows `leaf (main, experiment)` = every local tracking it
+  │    (reverse index LocalsByUpstream; git allows many locals → one remote, never the reverse)
+  ├─ Bottom: [Fetch] [Link] [Unlink] — Fetch always available, Link needs a branch row selected on
+  │    both sides, Unlink needs a *linked* local; all three gated while a Busy flag is set
+  └─ Actions run through GitDir (SetUpstream/UnsetUpstream/FetchAll → RunGitOp REFRESH_AND_UPDATE_UI);
+       the refresh broadcast is heard via IRefreshGitDirEvent → Reload() → CacheBranches() (reads the
+       live list only after a refresh completes) → RebuildRows() (selection restored by path across
+       setAll); the widget also implements IThemeChangeEvent (re-bakes separator/footer borders +
+       re-styles detail values on palette switches)
 
 StashWidget (separate Stage, launched from Git → Stash…; one per repo, deduped in TopMenuBar) → three-column SplitPane
   ├─ Left:   ListView<StashEntry> (stash list parsed from git stash list)
@@ -80,15 +104,18 @@ StashWidget (separate Stage, launched from Git → Stash…; one per repo, dedup
 
 GitDir (per repo, ISerializable) — data holder only
   ├─ GetChangedFiles() / GetBranches() / GetActiveBranch()   // ActiveBranch is volatile (full path, not leaf)
+  ├─ ChangeBranch / SetUpstream / UnsetUpstream / FetchAll    // all → Operator.RunGitOp(..., REFRESH_AND_UPDATE_UI)
+  │    (setUpstream overwrites any existing link in place — no unset-first; leading-dash branch
+  │     names are rejected as argv-guard)
   ├─ RunCMD(...) sync git exec (→ RunCMDUtil) — used only by FileChange diff queries
   └─ GetOperator() → GitOperator (AutoCloseable)
 ```
 
 ### Left-pane layout (GitDirWidget is the layout authority)
 
-- `GitDirWidget` owns all left-pane sizing as `RowConstraints` — per-widget size constants were removed (sizing is **not** set inside `BranchWidget`/`ChangesWidget`/`CommitWidget`)
-- The outer split is an `ASplitPane` (themed divider = the vertical border): the left sub-tab pane is **user-resizable** and its pixel width is persisted **globally** in the session file via a plain `AlphaEngine` scalar (ONE width for every repository, key `"LeftPaneWidth"`, default 500 — no wrapper object, same pattern as the window-bounds keys). The divider position is a fraction, so the saved pixels are applied as `width / paneWidth` only after the pane is laid out (setting it before sizing lets `SplitPaneSkin` redistribute the divider — JDK-8092863); dragging the divider writes `fraction × paneWidth` back to the shared scalar. Floor widths: left pane `LEFT_PANE_MIN_WIDTH = 250`, diff viewer `RIGHT_PANE_MIN_WIDTH = 200`
-- Row policy: branch row pinned `min == max = 140` (never grows); changes row `min 240 + vgrow ALWAYS` (the **only** growable row); commit row pinned `min == pref == COMMIT_ROW_PREF_HEIGHT = 240` (no vgrow) so it sticks to the bottom and never compresses when the sub-tab header takes vertical space
+- `GitDirWidget` owns all left-pane sizing — the "Changes" grid rows as `RowConstraints` and the branch selector's height as pinned min/max on the node itself (sizing is **not** set inside `BranchWidget`/`ChangesWidget`/`CommitWidget`)
+- The outer split is an `ASplitPane` (themed divider = the vertical border): the left pane (branch row + sub-tab panel) is **user-resizable** and its pixel width is persisted **globally** in the session file via a plain `AlphaEngine` scalar (ONE width for every repository, key `"LeftPaneWidth"`, default 500 — no wrapper object, same pattern as the window-bounds keys). The divider position is a fraction, so the saved pixels are applied as `width / paneWidth` only after the pane is laid out (setting it before sizing lets `SplitPaneSkin` redistribute the divider — JDK-8092863); dragging the divider writes `fraction × paneWidth` back to the shared scalar. Floor widths: left pane `LEFT_PANE_MIN_WIDTH = 250`, diff viewer `RIGHT_PANE_MIN_WIDTH = 200`
+- Left-pane stacking: `VBox(BRANCH_TO_TAB_GAP, BranchWidget, SubTabWidget)` — the branch selector is pinned `min == max = BRANCH_ROW_MIN_HEIGHT` (never grows) **above the tab strip** so both sub-tabs share it, the sub-tab widget is `vgrow ALWAYS`, and inside the "Changes" grid: changes row `min 240 + vgrow ALWAYS` (the **only** growable row); commit row pinned `min == pref == COMMIT_ROW_PREF_HEIGHT = 240` (no vgrow) so it sticks to the bottom and never compresses when the sub-tab header takes vertical space
 - Resizing the window only stretches the changes row; branch + commit heights are fixed
 
 ## Theming (Theme package + UI/Components)
@@ -113,7 +140,7 @@ GitDir (per repo, ISerializable) — data holder only
   - `REFRESH_DATA_ONLY` — refresh GitDir state, no UI broadcast
   - `REFRESH_AND_UPDATE_UI` — refresh + save session + broadcast refresh event (user-visible ops)
 - **Cancellation**: if a new operation arrives during a refresh, `RefreshCanceled` is set and the in-flight process is `destroyForcibly()`-killed; the refresh bails between sub-commands and a fresh one runs after the new operation.
-- Refresh pipeline: `git branch -a` → `git status --porcelain` (single call parses staged, unstaged, untracked, and renames in one pass) → diff-merge (keeps existing `FileChange` objects so cached diffs survive).
+- Refresh pipeline: `git branch -a` → `git for-each-ref refs/heads` (upstream links merged into local `GitBranch` records; a failure degrades to unlinked branches, never fails the refresh) → `git status --porcelain` (single call parses staged, unstaged, untracked, and renames in one pass) → diff-merge (keeps existing `FileChange` objects so cached diffs survive).
 - Callbacks (`IGitOperationCallback.OnCompleted(ok, error, gitDir)`) fire **on the runner thread** after the batch — wrap UI work in `Platform.runLater`. Callbacks always fire, even when the refresh fails or is skipped.
 - UI rebuild entry point: `GitDirWidget.RefreshGitDirWidget()` → `GitDir.Refresh(callback)` → on the FX thread: `ChangesWidget.UpdateChanges()` + `BranchWidget.UpdateBranchList()` (the diff viewer is driven by the file list selection, so it needs no explicit refresh)
 
@@ -163,9 +190,12 @@ These are not optional — match them when adding or editing methods.
 - `ChangesWidget` pins `ListView.setFixedCellSize()` to a **measured** row height (see `ComputeFixedCellSize`): without it, JavaFX 17–21 VirtualFlow under-computes the scroll range from estimated cell sizes for long lists, so the last entries can't be scrolled into view (keyboard selection reaches them, the view doesn't render them) — JDK-8296871 / JDK-8301375 / JDK-8328167
 - `GitCMDConstant` holds raw `List<String>` git command fragments — treat them as mutable (they're `List.of()` which is immutable in practice, but the `List` type allows accidental mutation); `GitOperator` defensively copies commands
 - Git exe resolution is inconsistent: `GitOperator.RunCMD` uses `GetValue_AsString()` but `RunCMDUtil.RunCMD` uses `GetDefaultValue_AsString()` — a user-configured git path is silently ignored for diff commands (known issue)
-- `BranchWidget` local/remote TreeViews use `setOnMouseClicked` (not `setOnAction`) for double-click checkout and right-click context menu
+- `BranchWidget` active-branch button uses `setOnAction` to toggle the `BranchPickerPopover` and `setOnMouseClicked` (right-click) for the context menu
 - Branch parsing (`GitOperator.ParseBranchesOutput`): remote vs local is decided by the `remotes/` prefix (not slash count — local branches like `feature/foo` contain slashes too); `ActiveBranch` stores the **full path** (`feature/foo`, not the leaf `foo`) so shared leaf names don't collide in the active-branch cell factory; detached-HEAD lines (`(HEAD detached at ...)`) are skipped
-- `BranchWidget` active-branch styling is done in the `TreeCell` factory (dot + bold green + tooltip) — never bake markers into the tree strings; cells are reused, so the empty branch must reset `setText/setGraphic/setTooltip/setStyle`
+- `BranchWidget` active-branch styling is done in the `ListCell` factory (dot + bold green + tooltip) — never bake markers into the branch path strings; cells are reused, so the empty branch must reset `setText/setGraphic/setTooltip/setStyle`
+- `BranchPickerPopover` groups branches into **Local** and **Remote** top-level sections (bold muted `SECTION` label rows, shown only when both sections have content) and within each section by a **hierarchical namespace trie** — every path segment becomes its own collapsible `NAMESPACE` header row (`BranchListRow.RowKind`), so `origin/feature/login` nests `origin` → `feature` → leaf instead of one flat `origin/feature` header; within each node child groups are emitted **before** that node's own leaves (namespaces pinned above branches, groups alphabetical via `TreeMap`, leaves keep input order); headers carry `Path` (full-path collapse key) and `Depth` (indent level); header/section clicks are consumed so the ListView never selects them; filter matches header full-path OR any descendant leaf (header match force-shows its subtree, hiding filters are per-node via `SubtreeHasMatch`), and filtering overrides collapse state so matches are never hidden
+- The namespace-tree machinery is **shared, not copied**: `BranchListRow` (row record), `BranchTree` (`BuildRows` trie build + emission, `ToggleNamespace`/`CollapseAll` collapse-set ops, `TREE_INDENT`/arrow constants) and `BranchFilterRow` (filter field + expand/collapse buttons, incl. the inline `-fx-padding: 4 6 4 6` override that keeps the 28px glyph buttons from overrun-clipping `+`/`−`) live in `UI/GitDirProjectManager` and feed both the popover and `BranchManagerWidget` — each keeps its own cell factory, filter text and collapse set (the manager shares one set across both columns)
+- Checkout in `BranchPickerPopover` is **activation-based, never selection-based**: JavaFX moves the selection on `MOUSE_PRESSED` for right-clicks too (`CellBehaviorBase`: `SECONDARY && !selected` → `clearAndSelect`), so a `selectedItemProperty` listener checked out the branch *before* `MOUSE_CLICKED` could show the context menu — activation fires only on primary click / Enter, and the menu target is hit-tested from the cursor (`RowAtEvent`) instead of read from the selection
 - `TextViewerWidget.DiffRowCell` is a recycled `ListCell` — `updateItem` must reset every property (`setText(null)`, `setGraphic(null)`, `setStyle("")`) and re-derive the row graphic from the `PreparedRow`; the inline `-fx-background-color` on the cell overrides the `:selected`/`:hover` styles so green/red rows keep their colour
 - `ChangesWidget.ToggleStagedState` batches: when the toggled row is part of a `MULTIPLE` selection it gathers every selected non-header row, syncs all their checkboxes, and runs ONE `add`/`reset` via `RunGitOp(..., REFRESH_AND_UPDATE_UI, callback)`; paths are prefixed with `:(literal)` so glob characters in filenames match literally. On completion all synced checkboxes are re-enabled; on failure they are reverted and an error alert is shown. The post-operation broadcast is handled by the operator, not the caller
 - `CommitWidget` disables the whole form while `git commit` runs so Enter (TextField action) can't double-submit; on success the form is cleared (the refresh already updated the UI)

@@ -25,6 +25,15 @@ public class GitCMDConstant
 
     public static List<String> Branches = List.of("branch", "-a");
     public static List<String> Checkout = List.of("checkout");
+    /**
+     * Local-branch upstream links: one line per local branch as
+     * {@code <path>\t<upstream-path>} (empty upstream when unlinked). Tab is a
+     * safe delimiter — git refnames forbid control characters.
+     */
+    public static List<String> Upstreams = List.of("for-each-ref", "refs/heads",
+            "--format=%(refname:short)%09%(upstream:short)");
+    /** Fetch every configured remote — the branch manager's Fetch button. */
+    public static List<String> Fetch_All = List.of("fetch", "--all");
     public static List<String> Diff_Unstaged_File = List.of("diff");
     public static List<String> Diff_Staged_File = List.of("diff", "--cached");
 

@@ -2,6 +2,7 @@ package com.gitalpha.UI;
 
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.UI.Components.ATopMenuBar;
+import com.gitalpha.UI.GitDirProjectManager.BranchManagerWidget;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import com.gitalpha.UI.Stash.StashWidget;
 import javafx.scene.control.*;
@@ -11,8 +12,8 @@ import java.util.Map;
 
 /**
  * Top application menu bar (File / Git / Settings / Help). Entries that have
- * been implemented (Stash) open their respective UI; remaining entries are
- * placeholders that show a "not implemented yet" notice.
+ * been implemented (Stash, Branch Manager) open their respective UI; remaining
+ * entries are placeholders that show a "not implemented yet" notice.
  */
 public class TopMenuBar extends ATopMenuBar
 {
@@ -54,10 +55,33 @@ public class TopMenuBar extends ATopMenuBar
 				new SeparatorMenuItem(),
 				PlaceholderItem("Create Branch..."),
 				PlaceholderItem("Delete Branch"),
+				CreateBranchManagerItem(),
 				new SeparatorMenuItem(),
 				CreateStashItem(),
 				PlaceholderItem("Tags..."));
 		return __GitMenu;
+	}
+
+	/**
+	 * Opens the branch manager window for the currently selected project, or
+	 * reports the placeholder notice when no project is open. One window per
+	 * repository — {@link BranchManagerWidget#Open} brings an existing one to
+	 * front instead of creating a duplicate.
+	 */
+	private static MenuItem CreateBranchManagerItem()
+	{
+		MenuItem __Item = new MenuItem("Branch Manager...");
+		__Item.setOnAction(__Event ->
+		{
+			GitDir __GitDir = GetSelectedGitDir();
+			if (__GitDir == null)
+			{
+				PlaceholderNotice.ShowNotImplemented("Branch Manager (no project open)");
+				return;
+			}
+			BranchManagerWidget.Open(__GitDir);
+		});
+		return __Item;
 	}
 
 	/**

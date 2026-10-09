@@ -32,11 +32,11 @@ public class MainJavaFx extends Application
 		if (AlphaUI.Instance == null)
 			new AlphaUI();
 
-		// Default size suits the layout floor: the left pane needs 140px branch
-		// row + 240px minimum changes row + 300px commit form row + two 10px
-		// gaps (mirroring BRANCH_ROW_MIN_HEIGHT, CHANGES_ROW_MIN_HEIGHT and
-		// COMMIT_ROW_PREF_HEIGHT in GitDirWidget), plus the tab
-		// header.
+		// Default size suits the layout floor: the left pane needs the 60px
+		// pinned branch row + gap + tab header + 240px minimum changes row +
+		// 240px commit form row + the remaining vertical gaps (mirroring
+		// BRANCH_ROW_MIN_HEIGHT, BRANCH_TO_TAB_GAP, CHANGES_ROW_MIN_HEIGHT
+		// and COMMIT_ROW_PREF_HEIGHT in GitDirWidget).
 		Scene __Scene = new Scene(AlphaUI.Instance, 800, 780);
 		ThemeManager.Instance.RegisterScene(__Scene);
 		stage.setTitle("Git Alpha");
@@ -46,12 +46,11 @@ public class MainJavaFx extends Application
 		// its rows never shrink below their minimums, so clamp the window to
 		// 800x780: the height keeps the commit form fully visible (720px
 		// layout floor + ~60px of top chrome: menu bar + quick command bar),
-		// the width keeps the diff viewer usable
-		// beside the left column. The height floor is clamped to the primary
-		// screen's visual bounds so a small display (e.g. 1366x768 with a
-		// taskbar) can still shrink the window to fit. Set before applying the
-		// saved bounds so a previously-saved smaller window is restored at
-		// (at least) this size.
+		// the width keeps the diff viewer usable beside the left column. The
+		// height floor is clamped to the primary screen's visual bounds so a
+		// small display (e.g. 1366x768 with a taskbar) can still shrink the
+		// window to fit. Set before applying the saved bounds so a
+		// previously-saved smaller window is restored at (at least) this size.
 		stage.setMinWidth(800);
 		stage.setMinHeight(Math.min(780, Screen.getPrimary().getVisualBounds().getHeight()));
 
@@ -95,6 +94,9 @@ public class MainJavaFx extends Application
 		// window and then calls stop(), which saves the session.
 		stage.setOnCloseRequest(__Event -> Platform.exit());
 
+		// Save the session and refresh every open project (null target) on
+		// each focus transition, so git changes made outside the app are
+		// picked up when the window regains focus.
 		stage.focusedProperty().addListener((obs, oldValue, newValue) ->
 		{
 			if (Boolean.TRUE.equals(newValue))

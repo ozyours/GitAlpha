@@ -16,19 +16,23 @@ import java.util.Objects;
 
 /**
  * Project view for one open repository. The content is an outer split pane:
- * the left sub-tab pane (user-resizable, persisted globally) is a
- * non-modifiable {@link ATabWidget} holding "Changes" (branches, file
- * changes and the commit form) and "History" (the {@link TreeViewWidget}
- * commit-graph placeholder). The shared {@link TextViewerWidget} diff viewer
- * fills the right pane and follows the "Changes" file-list selection; the
- * "History" graph will drive it once implemented. Subscribes to global
- * refresh events and keeps its sub-widgets in sync with the repository state.
+ * the left pane (user-resizable width, persisted globally) stacks a pinned
+ * branch-selector row above a non-modifiable {@link ATabWidget} holding
+ * "Changes" (file changes and the commit form) and "History" (the
+ * {@link TreeViewWidget} commit-graph placeholder). The selector sits
+ * outside the tab content, so both sub-tabs share it. The shared
+ * {@link TextViewerWidget} diff viewer fills the right pane and follows the
+ * "Changes" file-list selection; the "History" graph will drive it once
+ * implemented. Subscribes to global refresh events and keeps its
+ * sub-widgets in sync with the repository state.
  */
 public class GitDirWidget extends StackPane
 {
 	/**
-	 * Assembles the layout and registers a refresh-event listener that
-	 * rebuilds this project when its repo (or any repo, null target) refreshes.
+	 * Assembles the split-pane layout — pinned branch row above the sub-tab
+	 * panel, shared diff viewer to the right — and registers a
+	 * refresh-event listener that rebuilds this project when its repo (or
+	 * any repo, null target) refreshes.
 	 *
 	 * @param _TabButton the tab hosting this project widget
 	 * @param _GitDir    the repository this widget displays
@@ -50,29 +54,27 @@ public class GitDirWidget extends StackPane
 		TextViewerWidgetInstance = new TextViewerWidget(GitDirTarget, this); // TODO: Pass the selected FileChange when implemented
 		TreeViewWidgetInstance = new TreeViewWidget(GitDirTarget, this);
 
-		// The "Changes" tab hosts the three working-tree widgets stacked in
-		// their own grid; row sizing (the constants below) is the layout
-		// authority of this widget, and CommitWidget sets no height of its own
-		// — it relies on its grid row. The branch row is pinned (min == max)
-		// and never grows. The commit row is pinned the same way (min == pref,
-		// no vgrow): because the grid sits inside a sub-tab pane, the tab
+		// The "Changes" tab hosts the working-tree widgets stacked in their
+		// own grid; row sizing (the constants below) is the layout authority
+		// of this widget, and CommitWidget sets no height of its own — it
+		// relies on its grid row. The commit row is pinned (min == pref, no
+		// vgrow): because the grid sits inside a sub-tab pane, the tab
 		// header consumes vertical space that would otherwise compress a merely
 		// preferred-height row — pinning min == pref keeps the commit form at
 		// full size, stuck to the bottom. Only the changes row is vgrow ALWAYS,
-		// so it is the sole absorber of extra vertical space on resize.
+		// so it is the sole absorber of extra vertical space on resize. The
+		// branch selector no longer lives in this grid — it sits above the
+		// tab strip (see below), shared by both sub-tabs.
 		var __ChangesLayout = new GridPane();
-		var __BranchRow = new RowConstraints();
-		__BranchRow.setMinHeight(BRANCH_ROW_MIN_HEIGHT);
-		__BranchRow.setMaxHeight(BRANCH_ROW_MIN_HEIGHT);
 		var __ChangesRow = new RowConstraints();
 		__ChangesRow.setMinHeight(CHANGES_ROW_MIN_HEIGHT);
 		__ChangesRow.setVgrow(Priority.ALWAYS);
 		var __CommitRow = new RowConstraints();
 		__CommitRow.setPrefHeight(COMMIT_ROW_PREF_HEIGHT);
 		__CommitRow.setMinHeight(COMMIT_ROW_PREF_HEIGHT);
-		__ChangesLayout.getRowConstraints().addAll(__BranchRow, __ChangesRow, __CommitRow);
+		__ChangesLayout.getRowConstraints().addAll(__ChangesRow, __CommitRow);
 		// The single column stretches to fill the grid's full width so the
-		// branch/changes/commit widgets extend across the whole left pane of
+		// changes/commit widgets extend across the whole left pane of
 		// the outer split pane: Hgrow ALWAYS absorbs the extra space the grid
 		// is given, and PercentWidth 100 pins the column to the entire grid
 		// width. Without these flags the widgets would sit at their preferred
@@ -82,9 +84,8 @@ public class GitDirWidget extends StackPane
 		__ContentColumn.setPercentWidth(100);
 		__ChangesLayout.getColumnConstraints().add(__ContentColumn);
 
-		__ChangesLayout.add(BranchWidgetInstance, 0, 0);  // Top
-		__ChangesLayout.add(ChangesWidgetInstance, 0, 1); // Middle
-		__ChangesLayout.add(CommitWidgetInstance, 0, 2);  // Bottom
+		__ChangesLayout.add(ChangesWidgetInstance, 0, 0); // Top
+		__ChangesLayout.add(CommitWidgetInstance, 0, 1);  // Bottom
 		__ChangesLayout.setVgap(10);
 
 		// The two views share the diff viewer on the right: "Changes" shows the
@@ -97,16 +98,26 @@ public class GitDirWidget extends StackPane
 		SubTabWidget = new ATabWidget(false, ETabButtonVariant.SMALL);
 		SubTabWidget.AddTab("Changes", __ChangesLayout);
 		SubTabWidget.AddTab("History", TreeViewWidgetInstance);
-		VBox __SubPanel = SubTabWidget; // ATabWidget is a VBox: header + content stack
 
-		// Outer split pane: the left sub-tab pane and the shared diff viewer
-		// are separated by a draggable divider — the vertical border between
-		// the two panels. The left-pane width is user-resizable and persisted
-		// globally (one width for every project, stored directly in the session
-		// file by AlphaEngine), and the divider itself is themed by the
-		// split-pane skin.
+		// Left pane: the branch selector pinned above the tab strip, then the
+		// sub-tab widget taking all remaining height. The selector keeps the
+		// grid's old pin semantics (min == max): it never grows or shrinks,
+		// and every window resize is absorbed by the tab content's growable
+		// changes row below. Both sub-tabs share the selector now that it sits
+		// outside the "Changes" tab.
+		BranchWidgetInstance.setMinHeight(BRANCH_ROW_MIN_HEIGHT);
+		BranchWidgetInstance.setMaxHeight(BRANCH_ROW_MIN_HEIGHT);
+		VBox.setVgrow(SubTabWidget, Priority.ALWAYS);
+		VBox __SubPanel = new VBox(BRANCH_TO_TAB_GAP, BranchWidgetInstance, SubTabWidget);
+
+		// Outer split pane: the left pane (branch row + sub-tab panel) and
+		// the shared diff viewer are separated by a draggable divider — the
+		// vertical border between the two panels. The left-pane width is
+		// user-resizable and persisted globally (one width for every project,
+		// stored directly in the session file by AlphaEngine), and the divider
+		// itself is themed by the split-pane skin.
 		ASplitPane __SplitPane = new ASplitPane(__SubPanel, TextViewerWidgetInstance);
-		// Neither side may collapse completely: the sub-tab panel keeps a floor
+		// Neither side may collapse completely: the left pane keeps a floor
 		// width so the branch/changes/commit widgets stay usable, and the diff
 		// viewer keeps a floor too so a wide window can't be monopolized by the
 		// left pane. The SplitPane divider drag respects both floors.
@@ -167,10 +178,11 @@ public class GitDirWidget extends StackPane
 	}
 
 	/**
-	 * Minimum width (px) of the left sub-tab pane. The SplitPane divider
-	 * cannot shrink it below this, so the branch/changes/commit widgets always
-	 * stay usable. The pane's preferred/actual width is user-resizable and
-	 * persisted globally via {@link AlphaEngine#GetSharedLeftPaneWidth()}.
+	 * Minimum width (px) of the left pane (branch row + sub-tab panel). The
+	 * SplitPane divider cannot shrink it below this, so the
+	 * branch/changes/commit widgets always stay usable. The pane's
+	 * preferred/actual width is user-resizable and persisted globally via
+	 * {@link AlphaEngine#GetSharedLeftPaneWidth()}.
 	 */
 	private static final double LEFT_PANE_MIN_WIDTH = 250;
 	/**
@@ -179,8 +191,17 @@ public class GitDirWidget extends StackPane
 	 * monopolized by the left pane.
 	 */
 	private static final double RIGHT_PANE_MIN_WIDTH = 200;
-	/** Pinned height (px) of the branch tree row (min == max, never grows or shrinks) */
-	private static final double BRANCH_ROW_MIN_HEIGHT = 140;
+	/**
+	 * Pinned height (px) of the branch selector's row in the left-pane VBox;
+	 * min == max set on the node by this widget, so the row never grows or
+	 * shrinks and window resizes are absorbed by the changes row below.
+	 */
+	private static final double BRANCH_ROW_MIN_HEIGHT = 60;
+	/**
+	 * Vertical gap (px) the left-pane VBox leaves between the pinned branch
+	 * selector and the sub-tab widget (tab strip) below it
+	 */
+	private static final double BRANCH_TO_TAB_GAP = 6;
 	/**
 	 * Minimum height (px) of the changes list row. The only growable row
 	 * (vgrow ALWAYS, no max height) — it absorbs all extra vertical space.
@@ -207,7 +228,10 @@ public class GitDirWidget extends StackPane
 	 */
 	private final ATabWidget SubTabWidget;
 
-	/** The local/remote branch trees at the top of the "Changes" sub-tab */
+	/**
+	 * The branch selector: a pinned row of the left-pane VBox above the
+	 * sub-tab widget — outside the "Changes" grid, so both sub-tabs share it.
+	 */
 	private final BranchWidget BranchWidgetInstance;
 	/** The staged/unstaged file list of the "Changes" sub-tab */
 	private final ChangesWidget ChangesWidgetInstance;

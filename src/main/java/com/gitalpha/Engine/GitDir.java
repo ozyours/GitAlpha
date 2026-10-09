@@ -1,5 +1,6 @@
 package com.gitalpha.Engine;
 
+import com.gitalpha.Constant.GitCMDConstant;
 import com.gitalpha.Engine.GitDirContainer.IScannedFilesUpdatedEvent;
 import com.gitalpha.Type.FileChange;
 import com.gitalpha.Type.GitBranch;
@@ -63,7 +64,7 @@ public class GitDir implements ISerializable
 	 * changes need to register here.
 	 */
 	private final List<WeakReference<IScannedFilesUpdatedEvent>> ScannedFilesUpdatedEventList = new ArrayList<>();
-	/** All branches (local + remote) parsed from `git branch -a` */
+	/** All branches (local + remote) parsed from `git branch -a`, with local upstream links merged in by the per-refresh `for-each-ref` query */
 	private final List<GitBranch> Branches = new ArrayList<>();
 	/**
 	 * Full path (namespace/name) of the currently checked-out branch.
@@ -300,6 +301,72 @@ public class GitDir implements ISerializable
 			throw new RuntimeException("No branch specified to change to");
 
 		Operator.RunGitOp(List.of("checkout", _Branch), ERefreshPolicy.REFRESH_AND_UPDATE_UI, _Callback);
+	}
+
+	/**
+	 * Links a local branch to a remote-tracking branch (sets its upstream) via
+	 * {@code git branch --set-upstream-to=<upstream> <branch>}. Git overwrites
+	 * any existing link in place — an {@code --unset-upstream} is never needed
+	 * before re-linking — and validates the target ref before writing, so a
+	 * failed call leaves the old link intact. Runs through the operator with
+	 * {@link ERefreshPolicy#REFRESH_AND_UPDATE_UI}: the refresh re-parses
+	 * upstreams and the broadcast repaints every branch view.
+	 *
+	 * @param _LocalBranch the local branch full path to link (e.g. {@code main})
+	 * @param _Upstream    the remote-tracking branch full path (e.g.
+	 *                     {@code origin/main})
+	 * @param _Callback    fires after the link + refresh complete (may be null)
+	 */
+	public void SetUpstream(String _LocalBranch, String _Upstream, IGitOperationCallback _Callback)
+	{
+		if (_LocalBranch == null || _LocalBranch.isBlank())
+			throw new RuntimeException("No local branch specified to link");
+		// The name is a bare argv element: a leading dash would make git
+		// parse it as an option instead of a branch name.
+		if (_LocalBranch.startsWith("-"))
+			throw new RuntimeException("Invalid branch name (leading '-'): " + _LocalBranch);
+		if (_Upstream == null || _Upstream.isBlank())
+			throw new RuntimeException("No upstream branch specified to link to");
+
+		Operator.RunGitOp(List.of("branch", "--set-upstream-to=" + _Upstream, _LocalBranch),
+				ERefreshPolicy.REFRESH_AND_UPDATE_UI, _Callback);
+	}
+
+	/**
+	 * Removes a local branch's upstream link via
+	 * {@code git branch --unset-upstream <branch>}. Only meaningful on a
+	 * linked branch — git errors when none is configured, which surfaces
+	 * through the callback. Runs through the operator with
+	 * {@link ERefreshPolicy#REFRESH_AND_UPDATE_UI} like
+	 * {@link #SetUpstream}.
+	 *
+	 * @param _LocalBranch the local branch full path to unlink
+	 * @param _Callback    fires after the unlink + refresh complete (may be null)
+	 */
+	public void UnsetUpstream(String _LocalBranch, IGitOperationCallback _Callback)
+	{
+		if (_LocalBranch == null || _LocalBranch.isBlank())
+			throw new RuntimeException("No branch specified to unlink");
+		// Bare argv element — same leading-dash guard as SetUpstream.
+		if (_LocalBranch.startsWith("-"))
+			throw new RuntimeException("Invalid branch name (leading '-'): " + _LocalBranch);
+
+		Operator.RunGitOp(List.of("branch", "--unset-upstream", _LocalBranch),
+				ERefreshPolicy.REFRESH_AND_UPDATE_UI, _Callback);
+	}
+
+	/**
+	 * Fetches every configured remote ({@code git fetch --all}) — the branch
+	 * manager's Fetch button. Fetch only updates remote-tracking refs (no
+	 * local branch or working tree is touched), so it is always safe; the
+	 * follow-up refresh with {@link ERefreshPolicy#REFRESH_AND_UPDATE_UI}
+	 * re-parses the branch list so new/removed remote branches appear.
+	 *
+	 * @param _Callback fires after the fetch + refresh complete (may be null)
+	 */
+	public void FetchAll(IGitOperationCallback _Callback)
+	{
+		Operator.RunGitOp(GitCMDConstant.Fetch_All, ERefreshPolicy.REFRESH_AND_UPDATE_UI, _Callback);
 	}
 
 	/**

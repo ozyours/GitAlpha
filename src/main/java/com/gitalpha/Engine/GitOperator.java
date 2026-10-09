@@ -16,7 +16,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -449,7 +451,7 @@ public class GitOperator implements AutoCloseable
 	// ---------------------------------------------------------------------------
 
 	/**
-	 * Refresh the internal GitDir state (branches + changed files).
+	 * Refresh the internal GitDir state (branches with their upstream links + changed files).
 	 * <p>
 	 * Checks {@link #RefreshCanceled} between each sub-command.
 	 * If set, the refresh bails out immediately.
@@ -486,6 +488,24 @@ public class GitOperator implements AutoCloseable
 		List<GitBranch> __ParsedBranches = ParseBranchesOutput(__BranchRes.getValue());
 		if (RefreshCanceled)
 			return;
+
+		// ── Step 1b: upstream links ──
+		// Auxiliary data: a failure (odd git, IO error) degrades to branches
+		// without links instead of failing the whole refresh. The query only
+		// covers refs/heads, so remote entries keep Upstream = "".
+		Pair<Integer, String> __UpstreamRes;
+		try
+		{
+			__UpstreamRes = RunCMD(GitCMDConstant.Upstreams, true);
+		}
+		catch (IOException __Ex)
+		{
+			__UpstreamRes = null;
+		}
+		if (RefreshCanceled)
+			return;
+		if (__UpstreamRes != null && __UpstreamRes.getKey() == 0)
+			ApplyUpstreams(__ParsedBranches, __UpstreamRes.getValue());
 
 		// Update GitDir's branch list and active branch.
 		GitDirTarget.GetBranches().clear();
@@ -598,6 +618,66 @@ public class GitOperator implements AutoCloseable
 		}
 
 		return __Branches;
+	}
+
+	/**
+	 * Parse the output of {@code GitCMDConstant.Upstreams}
+	 * ({@code for-each-ref refs/heads}) into a local-path → upstream-path map.
+	 * Lines are {@code <path>\t<upstream>}; git refnames forbid control
+	 * characters, so the tab can never occur inside a branch name. Unlinked
+	 * branches carry an empty upstream — note that {@code FixCMDString}'s
+	 * trim already removes that trailing tab, so they may arrive tab-less;
+	 * either way they are absent from the map, and "absent = no link" is
+	 * exactly the lookup contract of {@link #ApplyUpstreams}.
+	 *
+	 * @param _Output the raw command output
+	 * @return map of local branch full paths to upstream full paths
+	 *         (non-empty values only)
+	 */
+	private static Map<String, String> ParseUpstreamOutput(String _Output)
+	{
+		var __Links = new HashMap<String, String>();
+		for (String __RawLine : _Output.split("\n"))
+		{
+			String __Line = StringFunction.FixCMDString(__RawLine).replace('\\', '/');
+			int __Tab = __Line.indexOf('\t');
+			if (__Tab <= 0)
+				continue; // unlinked (tab trimmed away) or malformed
+			String __Upstream = __Line.substring(__Tab + 1).trim();
+			if (__Upstream.isEmpty())
+				continue; // unlinked — absent from the map
+			__Links.put(__Line.substring(0, __Tab), __Upstream);
+		}
+		return __Links;
+	}
+
+	/**
+	 * Merge upstream links into the freshly parsed branch list. Only local
+	 * branches are re-linked (git stores the link on the local side; remote
+	 * branches never carry one), and only when a link exists — unlinked
+	 * branches keep the record they were parsed with. Records are replaced
+	 * rather than mutated (records are immutable), preserving every other
+	 * component including the precomputed {@link GitBranch#FullPath()}.
+	 *
+	 * @param _Branches the parsed branch list (modified in place)
+	 * @param _Output   the raw {@code GitCMDConstant.Upstreams} output
+	 */
+	private static void ApplyUpstreams(List<GitBranch> _Branches, String _Output)
+	{
+		Map<String, String> __Links = ParseUpstreamOutput(_Output);
+		if (__Links.isEmpty())
+			return;
+		for (int __Idx = 0; __Idx < _Branches.size(); ++__Idx)
+		{
+			GitBranch __Branch = _Branches.get(__Idx);
+			if (__Branch.Remote())
+				continue;
+			String __Upstream = __Links.get(__Branch.FullPath());
+			if (__Upstream == null)
+				continue;
+			_Branches.set(__Idx, new GitBranch(__Branch.Name(), __Branch.Namespace(),
+					__Branch.Remote(), __Branch.FullPath(), __Upstream));
+		}
 	}
 
 	// ---------------------------------------------------------------------------

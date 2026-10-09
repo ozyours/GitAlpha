@@ -2,372 +2,279 @@ package com.gitalpha.UI.GitDirProjectManager;
 
 import com.gitalpha.Engine.Debug;
 import com.gitalpha.Engine.GitDir;
-import com.gitalpha.Type.GitBranch;
 import com.gitalpha.Theme.ThemeManager;
+import com.gitalpha.Type.EButtonVariant;
+import com.gitalpha.Type.GitBranch;
+import com.gitalpha.UI.Components.AButton;
+import com.gitalpha.UI.Components.AText;
+import com.gitalpha.Type.ETextVariant;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
-import javafx.scene.control.TreeCell;
-import javafx.scene.control.TreeItem;
-import javafx.scene.control.TreeView;
-import javafx.scene.control.Tooltip;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.VBox;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
-import javafx.scene.input.MouseButton;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
 
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Branch selector widget: a compact {@link AButton} showing the active
+ * branch (with a dot) that opens a {@link BranchPickerPopover} on click.
+ * The popover lists all local + remote branches with a filter field —
+ * designed for repos with many branches where a flat dropdown is painful.
+ * Activating a branch in the popover (primary click or Enter) triggers
+ * checkout through the operator queue; selection alone never does, so a
+ * right-click can open the context menu without checking out first. The
+ * menu is shared by the button and the popover: on the popover it acts on
+ * the right-clicked row, on the button on the active branch. Checkout and
+ * the Branch Manager window are implemented — create, delete, push and pull
+ * are placeholders.
+ */
 class BranchWidget extends BaseWidget
 {
+	/** Unicode dot shown next to the active branch name */
 	private static final String ACTIVE_BRANCH_DOT = "\u25CF"; // "●"
+	/** Inline CSS for the active branch label; fixed green, not palette-derived (matches the popover cell's active marker) */
 	private static final String ACTIVE_BRANCH_STYLE = "-fx-font-weight: bold; -fx-text-fill: #2e7d32;";
-	private static final int SPACING = 10;
+	/** Vertical gap between the label and the button */
+	private static final double V_GAP = 4;
 
-	private final TreeView<String> LocalTreeView;
-	private final TreeView<String> RemoteTreeView;
+	/** Button that shows the active branch and opens the popover on click */
+	private final AButton BranchButton;
+	/** Label inside the button showing the active branch name */
+	private final Label ActiveBranchLabel;
+	/** Non-modal popover listing all branches with a filter field */
+	private final BranchPickerPopover BranchPopover;
 
+	/**
+	 * Build the branch widget: wire the active-branch button, the picker
+	 * popover (checkout on activation) and the context menu, then populate
+	 * the branch list from the repository.
+	 *
+	 * @param _GitDirTarget       the repository this widget operates on
+	 * @param _GitDirWidgetTarget the hosting project widget
+	 */
 	public BranchWidget(GitDir _GitDirTarget, GitDirWidget _GitDirWidgetTarget)
 	{
 		super(_GitDirTarget, _GitDirWidgetTarget);
 
-		// Create and configure the TreeViews for local and remote branches
-		LocalTreeView = new TreeView<>();
-		RemoteTreeView = new TreeView<>();
-		// Cell factory renders the active branch with a dot, bold text and accent
-		// color instead of a text marker; remote rows never show the active style.
-		// The lambda parameter (__Ignored) is the TreeView itself, which the factory
-		// does not need — only the local/remote flag decides the cell appearance.
-		LocalTreeView.setCellFactory(__Ignored -> CreateBranchCell(false));
-		RemoteTreeView.setCellFactory(__Ignored -> CreateBranchCell(true));
+		// ── Active-branch label (inside the button graphic) ──
+		ActiveBranchLabel = new Label(ACTIVE_BRANCH_DOT + " ...");
+		ActiveBranchLabel.setStyle(ACTIVE_BRANCH_STYLE);
 
-		// Update the branch list (populate trees)
+		// ── Trigger button ──
+		BranchButton = new AButton("", EButtonVariant.NORMAL);
+		BranchButton.setGraphic(ActiveBranchLabel);
+		BranchButton.setContentDisplay(javafx.scene.control.ContentDisplay.LEFT);
+		BranchButton.setOnAction(__E -> TogglePopover());
+		// Right-click opens the context menu instead of the popover.
+		BranchButton.setOnMouseClicked(__E ->
+		{
+			if (__E.getButton() == javafx.scene.input.MouseButton.SECONDARY)
+				ShowContextMenu(__E.getScreenX(), __E.getScreenY());
+		});
+
+		// ── Popover ──
+		BranchPopover = new BranchPickerPopover();
+		BranchPopover.SetOnBranchSelected(__Path -> CheckoutBranchByName(__Path));
+
+		// Populate and wire up
 		UpdateBranchList();
+		SetupContextMenu();
 
-		// Set up click handlers
-		SetupClickHandlers();
-
-		// Layout: two vertical boxes side-by-side
-		VBox localBox = new VBox(new Label("Local Branches"), LocalTreeView);
-		VBox remoteBox = new VBox(new Label("Remote Branches"), RemoteTreeView);
-		HBox h = new HBox(localBox, remoteBox);
-		h.setSpacing(SPACING);
-		// The trees must grow inside their VBoxes: the branch row height comes from
-		// GitDirWidget's RowConstraints, and VBox only stretches
-		// children that opt in via Vgrow.
-		VBox.setVgrow(LocalTreeView, Priority.ALWAYS);
-		VBox.setVgrow(RemoteTreeView, Priority.ALWAYS);
-		// The two branch panes must stretch to fill the width the grid row
-		// grants them — HBox only stretches children that opt in via Hgrow,
-		// otherwise the trees would stay at their preferred width and leave
-		// the rest of the branch row empty. Both panes opt in, so any extra
-		// width is shared equally between local and remote.
-		HBox.setHgrow(localBox, Priority.ALWAYS);
-		HBox.setHgrow(remoteBox, Priority.ALWAYS);
-		getChildren().add(h);
+		// Layout: label + button stacked vertically
+		AText __Label = new AText("Branch", ETextVariant.TITLE);
+		VBox __VBox = new VBox(V_GAP, __Label, BranchButton);
+		VBox.setVgrow(BranchButton, Priority.ALWAYS);
+		getChildren().add(__VBox);
 	}
 
-	/**
-	 * Wire up mouse interaction on both trees: double-click a leaf node to check
-	 * out that branch, right-click to open the shared branch context menu.
-	 */
-	private void SetupClickHandlers()
+	// ------------------------------------------------------------------
+	//  Popover toggle
+	// ------------------------------------------------------------------
+
+	/** Show the branch-picker popover below the button, or hide it if already visible. */
+	private void TogglePopover()
 	{
-		// Context menu for branch operations
-		ContextMenu contextMenu = new ContextMenu();
+		if (BranchPopover.IsShowing())
+			BranchPopover.Hide();
+		else
+			BranchPopover.Show(BranchButton);
+	}
 
-		MenuItem checkoutItem = new MenuItem("Checkout");
-		checkoutItem.setOnAction(e -> CheckoutSelectedBranch());
+	// ------------------------------------------------------------------
+	//  Context menu
+	// ------------------------------------------------------------------
 
-		MenuItem createBranchItem = new MenuItem("Create New Branch...");
-		createBranchItem.setOnAction(e -> CreateNewBranch());
+	/** The shared context menu for branch operations (shown on right-click). */
+	private ContextMenu ContextMenuInstance = null;
 
-		MenuItem deleteBranchItem = new MenuItem("Delete Branch");
-		deleteBranchItem.setOnAction(e -> DeleteBranch());
+	/**
+	 * Build the context menu with branch operations: Checkout, Create New
+	 * Branch, Delete, Push, Pull, plus the Branch Manager window (the one
+	 * place to link/unlink/fetch — the create/delete/push/pull entries listed
+	 * above stay placeholders). Stored in a field so both the button and the
+	 * popover can show it.
+	 */
+	private void SetupContextMenu()
+	{
+		ContextMenuInstance = new ContextMenu();
 
-		MenuItem pushBranchItem = new MenuItem("Push Branch");
-		pushBranchItem.setOnAction(e -> PushBranch());
+		MenuItem __CheckoutItem = new MenuItem("Checkout");
+		__CheckoutItem.setOnAction(__E -> CheckoutSelectedBranch());
 
-		MenuItem pullBranchItem = new MenuItem("Pull Branch");
-		pullBranchItem.setOnAction(e -> PullBranch());
+		MenuItem __CreateItem = new MenuItem("Create New Branch...");
+		__CreateItem.setOnAction(__E -> CreateNewBranch());
 
-		contextMenu.getItems().addAll(checkoutItem, new SeparatorMenuItem(), createBranchItem, deleteBranchItem, new SeparatorMenuItem(), pushBranchItem, pullBranchItem);
+		MenuItem __DeleteItem = new MenuItem("Delete Branch");
+		__DeleteItem.setOnAction(__E -> DeleteBranch());
 
-		// Set up mouse click handlers
-		// Local tree click handlers
-		LocalTreeView.setOnMouseClicked(event ->
-		{
-			TreeItem<String> sel = LocalTreeView.getSelectionModel().getSelectedItem();
-			if (sel != null)
-			{
-				if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2)
-				{
-					String full = BuildFullNameFromItem(sel);
-					if (full != null)
-						CheckoutBranchByName(full);
-				}
-				else if (event.getButton() == MouseButton.SECONDARY)
-				{
-					contextMenu.show(LocalTreeView, event.getScreenX(), event.getScreenY());
-				}
-			}
-		});
+		MenuItem __PushItem = new MenuItem("Push Branch");
+		__PushItem.setOnAction(__E -> PushBranch());
 
-		// Remote tree click handlers
-		RemoteTreeView.setOnMouseClicked(event ->
-		{
-			TreeItem<String> sel = RemoteTreeView.getSelectionModel().getSelectedItem();
-			if (sel != null)
-			{
-				if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2)
-				{
-					String full = BuildFullNameFromItem(sel);
-					if (full != null)
-						CheckoutBranchByName(full);
-				}
-				else if (event.getButton() == MouseButton.SECONDARY)
-				{
-					contextMenu.show(RemoteTreeView, event.getScreenX(), event.getScreenY());
-				}
-			}
-		});
+		MenuItem __PullItem = new MenuItem("Pull Branch");
+		__PullItem.setOnAction(__E -> PullBranch());
+
+		MenuItem __ManagerItem = new MenuItem("Branch Manager...");
+		__ManagerItem.setOnAction(__E -> BranchManagerWidget.Open(GetGitDirTarget()));
+
+		ContextMenuInstance.getItems().addAll(
+				__CheckoutItem,
+				new SeparatorMenuItem(),
+				__CreateItem,
+				__DeleteItem,
+				new SeparatorMenuItem(),
+				__PushItem,
+				__PullItem,
+				new SeparatorMenuItem(),
+				__ManagerItem);
+
+		// Also attach to the popover for right-click on individual branches.
+		BranchPopover.SetContextMenu(ContextMenuInstance);
 	}
 
 	/**
-	 * Check out the branch selected in either tree (local takes precedence).
-	 * Context-menu action; checks out the selected leaf's full branch path.
+	 * Show the context menu at the given screen coordinates. Clears the
+	 * popover's recorded right-click target first — the button carries no
+	 * row context — so menu actions fall back to the active branch instead
+	 * of a stale row from an earlier popover right-click.
+	 */
+	private void ShowContextMenu(double _ScreenX, double _ScreenY)
+	{
+		BranchPopover.ClearContextMenuTarget();
+		if (ContextMenuInstance != null)
+			ContextMenuInstance.show(BranchButton, _ScreenX, _ScreenY);
+	}
+
+	// ------------------------------------------------------------------
+	//  Context-menu actions
+	// ------------------------------------------------------------------
+
+	/**
+	 * Check out the branch the menu was opened on: the popover's
+	 * right-clicked row when present, otherwise the active branch shown on
+	 * the button (the menu is shared by both). No-op when there is no
+	 * target (detached HEAD / no active branch).
 	 */
 	private void CheckoutSelectedBranch()
 	{
-		TreeItem<String> sel = LocalTreeView.getSelectionModel().getSelectedItem();
-		boolean local = sel != null;
-		if (!local)
-		{
-			sel = RemoteTreeView.getSelectionModel().getSelectedItem();
-			if (sel == null)
-				return;
-		}
-
-		String full = BuildFullNameFromItem(sel);
-		if (full != null)
-			CheckoutBranchByName(full);
+		String __Target = BranchPopover.GetContextMenuTargetPath();
+		if (__Target == null || __Target.isBlank())
+			__Target = GetGitDirTarget().GetActiveBranch();
+		if (__Target != null && !__Target.isBlank())
+			CheckoutBranchByName(__Target);
 	}
 
+	/** Prompt the user for a new branch name and create it. Not yet implemented. */
 	private void CreateNewBranch()
 	{
 		// TODO: Show dialog to create new branch
 	}
 
+	/** Delete the selected branch. Not yet implemented. */
 	private void DeleteBranch()
 	{
-		//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
-		//		if (selectedItem != null)
-		//		{
-		//			String branchName = selectedItem.replaceAll("^\\s*\\*?\\s*", "").replaceAll("\\s*\\(remote\\)$", "");
-		//			// TODO: Implement delete branch logic using GitDirTarget
-		//		}
+		// TODO: Implement delete branch
 	}
 
+	/** Push the selected branch to its remote. Not yet implemented. */
 	private void PushBranch()
 	{
-		//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
-		//		if (selectedItem != null)
-		//		{
-		//			String branchName = selectedItem.replaceAll("^\\s*\\*?\\s*", "").replaceAll("\\s*\\(remote\\)$", "");
-		//			// TODO: Implement push branch logic using GitDirTarget
-		//		}
+		// TODO: Implement push branch
 	}
 
+	/** Pull the latest changes for the selected branch from its remote. Not yet implemented. */
 	private void PullBranch()
 	{
-		//		String selectedItem = branchListView.getSelectionModel().getSelectedItem();
-		//		if (selectedItem != null)
-		//		{
-		//			String branchName = selectedItem.replaceAll("^\\s*\\*?\\s*", "").replaceAll("\\s*\\(remote\\)$", "");
-		//			// TODO: Implement pull branch logic using GitDirTarget
-		//		}
+		// TODO: Implement pull branch
 	}
 
+	// ------------------------------------------------------------------
+	//  Branch list refresh
+	// ------------------------------------------------------------------
+
 	/**
-	 * Rebuild both branch trees from the current GitDir branch list.
-	 * Re-roots each tree and repopulates; the rebuild is deferred to the JavaFX
-	 * thread, so this may be called from a refresh callback.
+	 * Rebuild the popover's branch list from the current GitDir state and
+	 * update the button label to show the active branch. May be called from
+	 * a refresh callback, so the actual UI update is deferred to the JavaFX
+	 * thread.
 	 */
 	public void UpdateBranchList()
 	{
 		Debug.Log(Debug.BranchesCategory, "Updating branch list");
 		Platform.runLater(() ->
 		{
-			LocalTreeView.setRoot(null);
-			RemoteTreeView.setRoot(null);
-			PopulateBranchTrees();
-		});
-	}
+			String __Active = GetGitDirTarget().GetActiveBranch();
+			// Copy the live list — the operator runner mutates it; the popover must not alias it.
+			List<GitBranch> __Branches = new ArrayList<>(GetGitDirTarget().GetBranches());
 
-	/**
-	 * Cell factory for the branch trees. The active LOCAL branch is rendered with
-	 * a dot graphic, bold green text and a tooltip so it stands out without a text
-	 * marker; remote rows never show the active style.
-	 * The active check compares the FULL branch path (rebuilt from the tree
-	 * hierarchy) so branches sharing a leaf name (e.g. "feature/foo" vs
-	 * "hotfix/foo") are not both marked active.
-	 *
-	 * @param _IsRemote true for the remote tree (suppresses the active style)
-	 */
-	private TreeCell<String> CreateBranchCell(boolean _IsRemote)
-	{
-		return new TreeCell<>()
-		{
-			@Override
-			protected void updateItem(String _BranchName, boolean _Empty)
+			// Update the popover's backing list.
+			BranchPopover.SetBranches(__Branches, __Active);
+
+			// Update the button label to show the active branch.
+			if (__Active != null && !__Active.isBlank())
 			{
-				super.updateItem(_BranchName, _Empty);
-				if (_Empty || _BranchName == null)
-				{
-					setText(null);
-					setGraphic(null);
-					setTooltip(null);
-					setStyle("");
-					return;
-				}
-
-				setText(_BranchName);
-				// Compare the full branch path (rebuilt from the tree hierarchy) so
-				// branches sharing a leaf name (e.g. "feature/foo" vs "hotfix/foo")
-				// are not both marked active.
-				String __FullName = BuildFullNameFromItem(getTreeItem());
-				boolean __IsActive = !_IsRemote && __FullName != null && __FullName.equals(GetGitDirTarget().GetActiveBranch());
-				if (__IsActive)
-				{
-					setGraphic(new Label(ACTIVE_BRANCH_DOT));
-					setStyle(ACTIVE_BRANCH_STYLE);
-					setTooltip(new Tooltip("Currently checked out"));
-				}
-				else
-				{
-					setGraphic(null);
-					setStyle("");
-					setTooltip(null);
-				}
-			}
-		};
-	}
-
-	// Core population logic (must be called on JavaFX thread)
-	private void PopulateBranchTrees()
-	{
-		// Build separate trees for local and remote branches
-		TreeItem<String> localRoot = new TreeItem<>("local-root");
-		TreeItem<String> remoteRoot = new TreeItem<>("remote-root");
-		localRoot.setExpanded(true);
-		remoteRoot.setExpanded(true);
-
-		for (GitBranch branch : GetGitDirTarget().GetBranches())
-		{
-			String name = branch.Name();
-			java.util.List<String> ns = branch.Namespace();
-			if (branch.Remote())
-			{
-				InsertIntoTree(remoteRoot, ns, name);
+				ActiveBranchLabel.setText(ACTIVE_BRANCH_DOT + " " + __Active);
+				ActiveBranchLabel.setStyle(ACTIVE_BRANCH_STYLE);
 			}
 			else
 			{
-				InsertIntoTree(localRoot, ns, name);
+				ActiveBranchLabel.setText(ACTIVE_BRANCH_DOT + " (no branch)");
+				ActiveBranchLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #808080;");
 			}
-		}
-
-		LocalTreeView.setShowRoot(false);
-		RemoteTreeView.setShowRoot(false);
-		LocalTreeView.setRoot(localRoot);
-		RemoteTreeView.setRoot(remoteRoot);
+		});
 	}
 
-	/**
-	 * Insert a branch into a tree, creating namespace hierarchy nodes as needed
-	 * (each is expanded on creation so nested branches are visible immediately).
-	 *
-	 * @param _Root      the tree root to insert under
-	 * @param _Namespace branch namespace segments (empty for a top-level branch)
-	 * @param _Name      leaf branch name
-	 */
-	private void InsertIntoTree(TreeItem<String> _Root, java.util.List<String> _Namespace, String _Name)
-	{
-		TreeItem<String> cur = _Root;
-		for (String seg : _Namespace)
-		{
-			TreeItem<String> child = null;
-			for (TreeItem<String> c : cur.getChildren())
-			{
-				if (c.getValue().equals(seg))
-				{
-					child = c;
-					break;
-				}
-			}
-			if (child == null)
-			{
-				child = new TreeItem<>(seg);
-				child.setExpanded(true);
-				cur.getChildren().add(child);
-			}
-			cur = child;
-		}
-
-		// add leaf with the clean branch name; active-branch styling is applied
-		// by the cell factory, not baked into the string
-		TreeItem<String> leaf = new TreeItem<>(_Name);
-		cur.getChildren().add(leaf);
-	}
+	// ------------------------------------------------------------------
+	//  Checkout
+	// ------------------------------------------------------------------
 
 	/**
-	 * Rebuild the full branch path (namespace/name) from a tree item by walking
-	 * up to the hidden "local-root"/"remote-root" sentinel. Only leaf nodes are
-	 * branch names; namespace nodes cannot be checked out.
-	 *
-	 * @param _Item the tree item to resolve (a leaf = a branch)
-	 * @return the full branch path, or null if _Item is null or not a leaf
+	 * Check out a branch by its full name through the GitOperator queue
+	 * (REFRESH_AND_UPDATE_UI) and show an error dialog on failure. The
+	 * operator broadcasts the refresh, which routes back through
+	 * {@link GitDirWidget} to {@link #UpdateBranchList()} so the button and
+	 * popover pick up the new active branch. The callback runs on the
+	 * operator runner thread, so the alert is posted with
+	 * {@link Platform#runLater}.
 	 */
-	private String BuildFullNameFromItem(TreeItem<String> _Item)
+	private void CheckoutBranchByName(String _FullName)
 	{
-		if (_Item == null)
-			return null;
-		if (!_Item.isLeaf())
-			return null; // only leaf nodes represent branch names
-
-		java.util.ArrayList<String> parts = new java.util.ArrayList<>();
-		TreeItem<String> cur = _Item;
-		// branch names are stored clean, so there is no marker to strip
-		parts.add(cur.getValue());
-		while (cur.getParent() != null && cur.getParent().getValue() != null && !cur.getParent().getValue().equals("local-root") && !cur.getParent().getValue().equals("remote-root"))
-		{
-			cur = cur.getParent();
-			parts.add(0, cur.getValue());
-		}
-
-		// join namespace and name
-		return String.join("/", parts);
-	}
-
-	/**
-	 * Check out a branch by its full path through the GitOperator queue and show
-	 * an error dialog on failure (the refresh/broadcast after a successful
-	 * checkout is handled by the operator).
-	 */
-	private void CheckoutBranchByName(String fullName)
-	{
-		GetGitDirTarget().ChangeBranch(fullName, (__Ok, __Err, __Dir) ->
+		GetGitDirTarget().ChangeBranch(_FullName, (__Ok, __Err, __Dir) ->
 		{
 			if (!__Ok)
 			{
 				Platform.runLater(() ->
 				{
-					Alert alert = new Alert(Alert.AlertType.ERROR);
-					ThemeManager.Instance.ApplyThemeToDialog(alert);
-					alert.setTitle("Checkout Failed");
-					alert.setHeaderText("Failed to checkout branch");
-					alert.setContentText(__Err);
-					alert.showAndWait();
+					Alert __Alert = new Alert(Alert.AlertType.ERROR);
+					ThemeManager.Instance.ApplyThemeToDialog(__Alert);
+					__Alert.setTitle("Checkout Failed");
+					__Alert.setHeaderText("Failed to checkout branch");
+					__Alert.setContentText(__Err);
+					__Alert.showAndWait();
 				});
 			}
 		});
