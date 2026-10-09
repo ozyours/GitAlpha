@@ -209,6 +209,25 @@ Items that were discussed and have been committed to `master`.
       discards untracked files via recycle bin (fallback to permanent delete) and tracked files via
       git restore commands; ordering ensures untracked deletions precede tracked resets to avoid
       re-creation conflicts (`7025c31`)
+- [x] **Branch picker redesign (popover)** — supersedes the planned ComboBox dropdown: `BranchWidget`
+      rebuilt as an active-branch button + `BranchPickerPopover` (filter row with
+      expand/collapse-all, Local/Remote sections, hierarchical namespace trie with per-segment
+      collapsible headers); checkout is activation-based (primary click / Enter — never wired to
+      `selectedItemProperty`, so right-click opens the context menu without checking out first,
+      menu target hit-tested from the cursor); the selector sits above the tab strip in
+      `GitDirWidget`, shared by both sub-tabs and pinned at 60px so freed space feeds the changes
+      list; the tree machinery is shared with the manager via `BranchTree`/`BranchListRow`/
+      `BranchFilterRow` (`d11a733`)
+- [x] **Branch manager + local↔remote linking (set upstream)** — `BranchManagerWidget` (separate
+      Stage, Git → Branch Manager… + branch context menu, one window per repo): fixed 50/50
+      two-column namespace trees driven by one shared filter/collapse set, fixed-height detail
+      footers (name + linked branch), and Fetch/Link/Unlink routed through
+      `GitDir.SetUpstream`/`UnsetUpstream`/`FetchAll` → `RunGitOp(..., REFRESH_AND_UPDATE_UI)`;
+      `GitBranch` gained an `Upstream` component filled each refresh from `git for-each-ref`
+      (a failure degrades to unlinked branches, never fails the refresh); cells display the link
+      both ways — locals render `main (origin/main)`, remotes render every tracking local via the
+      reverse index; `git fetch --all` now exists (exposed as the manager's Fetch button — the
+      Git → Fetch menu entry stays a placeholder under App shell / UI) (`d11a733`)
 
 ---
 
@@ -221,29 +240,11 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 - [ ] **Branch create / delete** — context-menu items are still TODO stubs (`CreateNewBranch` /
       `DeleteBranch`); checkout already works (double-click and context menu, with error alert)
 - [ ] **Push / Pull** — context-menu items are TODO stubs (`PushBranch` / `PullBranch` are empty)
-- [ ] **Fetch** — no fetch operation exists
 - [ ] **Restore points (stash-based)** — higher-level feature built on `git stash`: save current
       changes as a named restore point, later restore the working tree to a previous restore point;
       must not replace the normal stash flow — restore points remain visible/usable via the regular
       stash UI
 - [ ] **Tags** — no tag listing/creation/deletion
-
-### Branch widget
-
-- [ ] **Dropdown local + menu remote branches** — `BranchWidget` renders two side-by-side `TreeView`s
-      (`BranchWidget.java:27-28,51-53`) inside the pinned 140px branch row; planned redesign: local
-      branches become a dropdown (`ComboBox`) with the active branch as current value (full-path
-      comparison via `GetActiveBranch()`, `BranchWidget.java:231-232`) and checkout on selection
-      (`ChangeBranch` through the operator queue, `:349`); remote branches move into a compact menu
-      (`MenuButton`/`ComboBox`) instead of a second tree. Done = checkout semantics preserved,
-      namespaced branches (`feature/foo`) still resolvable, row height may shrink below 140px —
-      re-check `GitDirWidget` RowConstraints so the freed space feeds the changes list
-- [ ] **Link local ↔ remote branch (set upstream)** — no upstream concept exists; context-menu items
-      `CreateNewBranch` / `DeleteBranch` / `PushBranch` / `PullBranch` are TODO stubs
-      (`BranchWidget.java:149-182`). Done = a branch-setting menu linking a local branch to a remote
-      via `git branch --set-upstream-to=<remote>/<branch>` through
-      `GitOperator.RunGitOp(..., REFRESH_AND_UPDATE_UI, callback)`; the local dropdown shows the
-      configured upstream (e.g. `main → origin/main`)
 
 ### Known issues
 
@@ -283,8 +284,9 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 ### App shell / UI
 
 - [ ] **Menu/quick-bar functionality** — `TopMenuBar` and `QuickCommandBar` exist with placeholder
-      entries only (committed as placeholders in `56f0d4b`; Git → Stash… is real since `8e85400`):
-      every other entry shows a "not implemented" notice. Done = real File (open/quit), Git
+      entries only (committed as placeholders in `56f0d4b`; Git → Stash… is real since `8e85400`,
+      Git → Branch Manager… since `d11a733`): every other entry shows a "not implemented" notice.
+      Done = real File (open/quit), Git
       (fetch/pull/push/branch/tags), Settings and Help (about) entries wired through the
       `GitOperator.RunGitOp(cmd, policy, callback)` queue
 - [ ] **Command abstraction + quick command bar** — decided design: `abstract class BaseCommand`
