@@ -22,7 +22,7 @@ import java.util.List;
 
 /**
  * Branch selector widget: a compact {@link AButton} showing the active
- * branch (with a dot) that opens a {@link BranchPickerPopover} on click.
+ * branch (with a dot) that opens a {@link BranchPickerPopover2} on click.
  * The popover lists all local + remote branches with a filter field —
  * designed for repos with many branches where a flat dropdown is painful.
  * Activating a branch in the popover (primary click or Enter) triggers
@@ -46,8 +46,8 @@ class BranchWidget extends BaseWidget
 	private final AButton BranchButton;
 	/** Label inside the button showing the active branch name */
 	private final Label ActiveBranchLabel;
-	/** Non-modal popover listing all branches with a filter field */
-	private final BranchPickerPopover BranchPopover;
+	/** Non-modal picker window listing all branches, built on the BranchListWidget */
+	private final BranchPickerPopover2 BranchPicker;
 
 	/**
 	 * Build the branch widget: wire the active-branch button, the picker
@@ -78,8 +78,9 @@ class BranchWidget extends BaseWidget
 		});
 
 		// ── Popover ──
-		BranchPopover = new BranchPickerPopover();
-		BranchPopover.SetOnBranchSelected(__Path -> CheckoutBranchByName(__Path));
+		BranchPicker = new BranchPickerPopover2(branch -> {
+			CheckoutBranchByName(branch.FullPath());
+		});
 
 		// Populate and wire up
 		UpdateBranchList();
@@ -99,10 +100,10 @@ class BranchWidget extends BaseWidget
 	/** Show the branch-picker popover below the button, or hide it if already visible. */
 	private void TogglePopover()
 	{
-		if (BranchPopover.IsShowing())
-			BranchPopover.Hide();
+		if (BranchPicker.IsShowing())
+			BranchPicker.Hide();
 		else
-			BranchPopover.Show(BranchButton);
+			BranchPicker.ShowAt(BranchButton);
 	}
 
 	// ------------------------------------------------------------------
@@ -153,7 +154,7 @@ class BranchWidget extends BaseWidget
 				__ManagerItem);
 
 		// Also attach to the popover for right-click on individual branches.
-		BranchPopover.SetContextMenu(ContextMenuInstance);
+		BranchPicker.SetContextMenu(ContextMenuInstance);
 	}
 
 	/**
@@ -164,7 +165,7 @@ class BranchWidget extends BaseWidget
 	 */
 	private void ShowContextMenu(double _ScreenX, double _ScreenY)
 	{
-		BranchPopover.ClearContextMenuTarget();
+		BranchPicker.ClearContextMenuTarget();
 		if (ContextMenuInstance != null)
 			ContextMenuInstance.show(BranchButton, _ScreenX, _ScreenY);
 	}
@@ -181,7 +182,7 @@ class BranchWidget extends BaseWidget
 	 */
 	private void CheckoutSelectedBranch()
 	{
-		String __Target = BranchPopover.GetContextMenuTargetPath();
+		String __Target = BranchPicker.GetContextMenuTargetPath();
 		if (__Target == null || __Target.isBlank())
 			__Target = GetGitDirTarget().GetActiveBranch();
 		if (__Target != null && !__Target.isBlank())
@@ -232,7 +233,7 @@ class BranchWidget extends BaseWidget
 			List<GitBranch> __Branches = new ArrayList<>(GetGitDirTarget().GetBranches());
 
 			// Update the popover's backing list.
-			BranchPopover.SetBranches(__Branches, __Active);
+			BranchPicker.SetBranches(__Branches, __Active);
 
 			// Update the button label to show the active branch.
 			if (__Active != null && !__Active.isBlank())
