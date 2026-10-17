@@ -10,8 +10,9 @@ import com.gitalpha.Type.GitBranch;
  * <p>
  * Display format: {@code <branch name> (<unpushed commits>) (<linked branch>)}
  * e.g. {@code master (2) (origin/master)} — each segment is gated by its
- * argument: the count renders only when {@code ShowUnpushed} and {@code > 0}
- * (scaffolding until the refresh pipeline feeds real per-branch counts), the
+ * argument: the count renders only when {@code ShowUnpushed} and the branch
+ * is ahead of its upstream (reads {@link GitBranch#UnpushedCommits()}, filled
+ * by the refresh's for-each-ref track query — never a second copy), the
  * linked branch only when {@code ShowLinkedBranch} and the branch actually
  * has an upstream.
  */
@@ -20,21 +21,19 @@ public class BranchListEntry_Branch extends BranchListEntry
 	private final GitBranch Branch;
 	private final boolean ShowUnpushed;
 	private final boolean ShowLinkedBranch;
-	private final int UnpushedCommits;
 
 	/**
-	 * @param _Branch          the branch this row renders
-	 * @param _ShowUnpushed    render the {@code (<count>)} segment when count > 0
+	 * @param _Branch           the branch this row renders (carries both the
+	 *                          upstream link and its unpushed count)
+	 * @param _ShowUnpushed     render the {@code (<count>)} segment when ahead
 	 * @param _ShowLinkedBranch render the {@code (<upstream>)} segment when linked
-	 * @param _UnpushedCommits commits ahead of the upstream (0 = hidden)
 	 */
 	public BranchListEntry_Branch(GitBranch _Branch, boolean _ShowUnpushed,
-			boolean _ShowLinkedBranch, int _UnpushedCommits)
+			boolean _ShowLinkedBranch)
 	{
 		Branch = _Branch;
 		ShowUnpushed = _ShowUnpushed;
 		ShowLinkedBranch = _ShowLinkedBranch;
-		UnpushedCommits = _UnpushedCommits;
 	}
 
 	/** @return the underlying branch data */
@@ -60,8 +59,8 @@ public class BranchListEntry_Branch extends BranchListEntry
 	public String GetDisplayText()
 	{
 		StringBuilder __Text = new StringBuilder(Branch.Name());
-		if (ShowUnpushed && UnpushedCommits > 0)
-			__Text.append(" (").append(UnpushedCommits).append(")");
+		if (ShowUnpushed && Branch.UnpushedCommits() > 0)
+			__Text.append(" (").append(Branch.UnpushedCommits()).append(")");
 		if (ShowLinkedBranch && Branch.HasUpstream())
 			__Text.append(" (").append(Branch.Upstream()).append(")");
 		return __Text.toString();

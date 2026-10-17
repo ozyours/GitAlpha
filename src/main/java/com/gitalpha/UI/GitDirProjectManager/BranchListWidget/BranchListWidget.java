@@ -50,8 +50,10 @@ import java.util.function.Consumer;
  * is active.
  * <p>
  * Row display: {@code <branch name> (<unpushed commits>) (<linked branch>)}
- * e.g. {@code master (2) (origin/master)} — the unpushed segment is not
- * wired yet (the row factory passes 0, which hides it). The active
+ * e.g. {@code master (2) (origin/master)} — the unpushed segment renders
+ * only when the branch is ahead of its upstream (the count rides on
+ * {@link GitBranch#UnpushedCommits()}, filled by the refresh's single
+ * for-each-ref call). The active
  * branch renders with a dot + bold green, remotes muted grey (the same fixed
  * hex markers the old popover used — literals, not palette slots).
  */
@@ -635,9 +637,10 @@ public class BranchListWidget extends VBox
 
 	private static BranchListRow BranchRow(GitBranch _Branch, int _Depth)
 	{
-		// TODO: unpushed counts come from the refresh pipeline's single
-		// `for-each-ref %(upstream:track)` query; 0 hides that segment.
-		BranchListEntry __Entry = new BranchListEntry_Branch(_Branch, true, true, 0);
+		// The count and link both ride on the branch: the refresh's single
+		// for-each-ref call captures git's %(upstream:track) ahead count
+		// alongside the upstream link, so no per-branch query is ever needed.
+		BranchListEntry __Entry = new BranchListEntry_Branch(_Branch, true, true);
 		return new BranchListRow(BranchListRow.RowKind.BRANCH,
 				__Entry.GetDisplayText(), __Entry, null, _Depth);
 	}

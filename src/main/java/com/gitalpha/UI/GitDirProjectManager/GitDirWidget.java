@@ -195,8 +195,13 @@ public class GitDirWidget extends StackPane
 	 * Pinned height (px) of the branch selector's row in the left-pane VBox;
 	 * min == max set on the node by this widget, so the row never grows or
 	 * shrinks and window resizes are absorbed by the changes row below.
+	 * This is the natural two-line content height — the {@code BranchWidget}
+	 * button row (two-line branch button pref ≈ 40px) plus {@code V_GAP} (4)
+	 * plus the reserved counts line (18) ≈ 62px — plus ~2px slack. Keeping it
+	 * near the natural height prevents the vgrow button row from absorbing
+	 * unused slack as extra button height.
 	 */
-	private static final double BRANCH_ROW_MIN_HEIGHT = 60;
+	private static final double BRANCH_ROW_MIN_HEIGHT = 64;
 	/**
 	 * Vertical gap (px) the left-pane VBox leaves between the pinned branch
 	 * selector and the sub-tab widget (tab strip) below it
@@ -250,7 +255,13 @@ public class GitDirWidget extends StackPane
 	/** True once the widget is disposed; guards async refresh callbacks and the dispose itself */
 	private boolean Disposed = false;
 
-	/** Point the diff viewer at the given file change (selection-driven). */
+	/**
+	 * Point the diff viewer at the given file change (selection-driven). A
+	 * {@code null} change clears the viewer — the state produced by an empty
+	 * selection or a section header.
+	 *
+	 * @param _FileChange the change to show, or {@code null} to clear the diff
+	 */
 	public void ReadFileChange(FileChange _FileChange)
 	{
 		TextViewerWidgetInstance.SetFileChange(_FileChange);

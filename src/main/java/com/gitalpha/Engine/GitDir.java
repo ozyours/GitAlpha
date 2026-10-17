@@ -64,7 +64,7 @@ public class GitDir implements ISerializable
 	 * changes need to register here.
 	 */
 	private final List<WeakReference<IScannedFilesUpdatedEvent>> ScannedFilesUpdatedEventList = new ArrayList<>();
-	/** All branches (local + remote) parsed from `git branch -a`, with local upstream links merged in by the per-refresh `for-each-ref` query */
+	/** All branches (local + remote) parsed from `git branch -a`, with local upstream links and their unpushed (`ahead`) / unpulled (`behind`) counts merged in by the per-refresh `for-each-ref` query */
 	private final List<GitBranch> Branches = new ArrayList<>();
 	/**
 	 * Full path (namespace/name) of the currently checked-out branch.
@@ -367,6 +367,34 @@ public class GitDir implements ISerializable
 	public void FetchAll(IGitOperationCallback _Callback)
 	{
 		Operator.RunGitOp(GitCMDConstant.Fetch_All, ERefreshPolicy.REFRESH_AND_UPDATE_UI, _Callback);
+	}
+
+	/**
+	 * Pushes the checked-out branch to its upstream ({@code git push}) — the
+	 * quick-action button's Push. Run through the operator with
+	 * {@link ERefreshPolicy#REFRESH_AND_UPDATE_UI} so the follow-up refresh
+	 * re-parses the track counts and clears the "ahead" state. Takes no
+	 * branch argument: push operates on HEAD's configured upstream.
+	 *
+	 * @param _Callback fires after the push + refresh complete (may be null)
+	 */
+	public void PushBranch(IGitOperationCallback _Callback)
+	{
+		Operator.RunGitOp(GitCMDConstant.Push, ERefreshPolicy.REFRESH_AND_UPDATE_UI, _Callback);
+	}
+
+	/**
+	 * Pulls the checked-out branch from its upstream ({@code git pull}) — the
+	 * quick-action button's Pull. Run through the operator with
+	 * {@link ERefreshPolicy#REFRESH_AND_UPDATE_UI} so the follow-up refresh
+	 * re-parses the track counts and clears the "behind" state. Takes no
+	 * branch argument: pull operates on HEAD's configured upstream.
+	 *
+	 * @param _Callback fires after the pull + refresh complete (may be null)
+	 */
+	public void PullBranch(IGitOperationCallback _Callback)
+	{
+		Operator.RunGitOp(GitCMDConstant.Pull, ERefreshPolicy.REFRESH_AND_UPDATE_UI, _Callback);
 	}
 
 	/**
