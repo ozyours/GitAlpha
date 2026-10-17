@@ -228,6 +228,40 @@ Items that were discussed and have been committed to `master`.
       both ways — locals render `main (origin/main)`, remotes render every tracking local via the
       reverse index; `git fetch --all` now exists (exposed as the manager's Fetch button — the
       Git → Fetch menu entry stays a placeholder under App shell / UI) (`d11a733`)
+- [x] **Branch list machinery consolidation** — the branch-list code previously spread across
+      `BranchPickerPopover`, `BranchTree`, `BranchFilterRow` and a per-consumer row record collapses
+      into one reusable `BranchListWidget` package (entry hierarchy with a virtual `IsSelectable()`,
+      namespace/section/branch rows, debounced filter, `+`/`-` expand-collapse buttons,
+      active/remote markers, path-based selection restore, separate activation `SetOnSelect` vs
+      passive `SetOnSelectionChanged` hooks); `BranchPickerPopover2` becomes the single popup shell
+      and `BranchManagerWidget`'s two hand-built columns become two widget instances driven by the
+      selection hook; the old generation (`BranchPickerPopover`, `BranchTree`, `BranchFilterRow`,
+      old `BranchListRow`) is deleted (`415f441`)
+- [x] **Branch unpushed/unpulled track counts** — `GitBranch` carries `UnpushedCommits` and
+      `UnpulledCommits`; `GitCMDConstant.Upstreams` adds `%(upstream:track)` and switches to
+      `lstrip=2`; `GitOperator` parses the `[ahead N]` / `[behind M]` summary (`UpstreamLink` /
+      `ParseAhead` / `ParseBehind`) in the same single `for-each-ref` refresh that fills the upstream
+      link; `BranchListEntry_Branch` reads the counts off the branch and `BranchWidget` renders them
+      on a reserved line; `AGENTS.md` updated (`df62d17`)
+- [x] **Push / Pull** — `GitDir.PushBranch` / `PullBranch` run `git push` / `git pull` through the
+      operator queue with `REFRESH_AND_UPDATE_UI`, surfaced by the branch row's quick-action button
+      (`df62d17`)
+- [x] **Branch action row (GitHub-Desktop style)** — `BranchWidget` becomes
+      `[branch button][quick action][...]`: the branch button shows `Current Branch:` over the bare
+      branch name (no dot, no count, normal skin); the quick action is Pull (behind) / Push (ahead) /
+      Fetch, height-matched to the branch button; the fixed square `...` menu (single reusable
+      `AContextMenu`, toggled so presses cannot stack) offers Fetch and Branch Manager…; a reserved,
+      non-collapsing line below reports the unpushed/unpulled counts (`df62d17`)
+- [x] **`APopup` reusable popup host** — new `UI/Components/APopup` wraps a JavaFX `Popup` and
+      funnels every hide route (explicit `Hide()`, outside-click auto-hide, Escape) through one
+      `RequestHide` with idempotency, a re-entrancy guard, an optional veto and a single post-hide
+      sink keyed by the new `EHideReason` enum; `BranchPickerPopover` is reparented to
+      `extends APopup` (dropping its own `Popup`, theme registration and `ShowAt`/`Hide`/`IsShowing`)
+      and is renamed `BranchPickerPopover2` → `BranchPickerPopover` (`df62d17`)
+- [x] **Branch picker context menu removed** — `BranchWidget` drops its branch context menu
+      (Checkout / Create / Delete / Push / Pull + Branch Manager items, `SetupContextMenu` /
+      `ShowContextMenu`, the right-click handler and the `ContextMenu` import); the picker popover
+      and checkout-on-activation remain (`df62d17`)
 
 ---
 
@@ -237,9 +271,11 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
 
 ### Core git operations (missing)
 
-- [ ] **Branch create / delete** — context-menu items are still TODO stubs (`CreateNewBranch` /
-      `DeleteBranch`); checkout already works (double-click and context menu, with error alert)
-- [ ] **Push / Pull** — context-menu items are TODO stubs (`PushBranch` / `PullBranch` are empty)
+- [ ] **Branch create / delete** — no create/delete path exists: the branch context menu that held
+      the `CreateNewBranch` / `DeleteBranch` stubs was removed from `BranchWidget`, so neither the
+      picker nor the manager offers them; checkout works (activation in the picker, with an error
+      alert). Done = create (prompt + `git branch`) and delete (confirmation + `git branch -d/-D`)
+      through `GitOperator.RunGitOp(..., REFRESH_AND_UPDATE_UI, ...)`
 - [ ] **Restore points (stash-based)** — higher-level feature built on `git stash`: save current
       changes as a named restore point, later restore the working tree to a previous restore point;
       must not replace the normal stash flow — restore points remain visible/usable via the regular
