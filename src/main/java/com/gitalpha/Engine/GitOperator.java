@@ -451,7 +451,7 @@ public class GitOperator implements AutoCloseable
 	// ---------------------------------------------------------------------------
 
 	/**
-	 * Refresh the internal GitDir state (branches with their upstream links + changed files).
+	 * Refresh the internal GitDir state (branches with their upstream links and unpushed/unpulled counts + changed files).
 	 * <p>
 	 * Checks {@link #RefreshCanceled} between each sub-command.
 	 * If set, the refresh bails out immediately.
@@ -621,50 +621,136 @@ public class GitOperator implements AutoCloseable
 	}
 
 	/**
+	 * One local branch's upstream data parsed from the refresh query: the
+	 * linked remote-tracking branch, how many commits the local is ahead of
+	 * it (git's {@code [ahead N]} track summary) and how many it is behind
+	 * it (git's {@code [behind N]} summary; both 0 when in sync, one-sided,
+	 * or the upstream is gone).
+	 *
+	 * @param Upstream the linked remote-tracking branch full path
+	 * @param Unpushed commits ahead of the upstream (0 = none reported)
+	 * @param Unpulled commits behind the upstream (0 = none reported)
+	 */
+	private record UpstreamLink(String Upstream, int Unpushed, int Unpulled)
+	{
+	}
+
+	/**
 	 * Parse the output of {@code GitCMDConstant.Upstreams}
-	 * ({@code for-each-ref refs/heads}) into a local-path → upstream-path map.
-	 * Lines are {@code <path>\t<upstream>}; git refnames forbid control
-	 * characters, so the tab can never occur inside a branch name. Unlinked
-	 * branches carry an empty upstream — note that {@code FixCMDString}'s
-	 * trim already removes that trailing tab, so they may arrive tab-less;
-	 * either way they are absent from the map, and "absent = no link" is
-	 * exactly the lookup contract of {@link #ApplyUpstreams}.
+	 * ({@code for-each-ref refs/heads}) into a local-path → upstream-data map.
+	 * Lines are {@code <path>\t<upstream>\t<track>}; git refnames forbid
+	 * control characters, so the tabs can never occur inside a branch name.
+	 * Unlinked branches carry empty upstream/track — note that
+	 * {@code FixCMDString}'s trim already removes those trailing tabs, so
+	 * they may arrive as a bare path; either way they are absent from the
+	 * map, and "absent = no link" is exactly the lookup contract of
+	 * {@link #ApplyUpstreams}. A linked-but-in-sync branch keeps its
+	 * upstream with an empty track (both track counts 0).
 	 *
 	 * @param _Output the raw command output
-	 * @return map of local branch full paths to upstream full paths
-	 *         (non-empty values only)
+	 * @return map of local branch full paths to upstream link + unpushed /
+	 *         unpulled counts (entries only for linked branches)
 	 */
-	private static Map<String, String> ParseUpstreamOutput(String _Output)
+	private static Map<String, UpstreamLink> ParseUpstreamOutput(String _Output)
 	{
-		var __Links = new HashMap<String, String>();
+		var __Links = new HashMap<String, UpstreamLink>();
 		for (String __RawLine : _Output.split("\n"))
 		{
 			String __Line = StringFunction.FixCMDString(__RawLine).replace('\\', '/');
-			int __Tab = __Line.indexOf('\t');
-			if (__Tab <= 0)
-				continue; // unlinked (tab trimmed away) or malformed
-			String __Upstream = __Line.substring(__Tab + 1).trim();
-			if (__Upstream.isEmpty())
+			String[] __Parts = __Line.split("\t", -1);
+			if (__Parts.length < 2)
+				continue; // unlinked (trailing fields trimmed away) or malformed
+			String __Local = __Parts[0];
+			String __Upstream = __Parts[1].trim();
+			if (__Local.isEmpty() || __Upstream.isEmpty())
 				continue; // unlinked — absent from the map
-			__Links.put(__Line.substring(0, __Tab), __Upstream);
+			String __Track = __Parts.length > 2 ? __Parts[2] : "";
+			__Links.put(__Local, new UpstreamLink(__Upstream, ParseAhead(__Track), ParseBehind(__Track)));
 		}
 		return __Links;
 	}
 
 	/**
-	 * Merge upstream links into the freshly parsed branch list. Only local
-	 * branches are re-linked (git stores the link on the local side; remote
-	 * branches never carry one), and only when a link exists — unlinked
-	 * branches keep the record they were parsed with. Records are replaced
-	 * rather than mutated (records are immutable), preserving every other
-	 * component including the precomputed {@link GitBranch#FullPath()}.
+	 * Extract the ahead count from git's upstream track summary
+	 * ({@code [ahead 2]}, {@code [ahead 2, behind 1]}, {@code [gone]}, or
+	 * empty) — the "unpushed commits" number the branch views render.
+	 * Anything without an {@code ahead N} clause (in sync, behind only,
+	 * upstream gone) yields 0.
+	 *
+	 * @param _Track the raw {@code %(upstream:track)} field
+	 * @return commits ahead of the upstream (0 = none reported)
+	 */
+	private static int ParseAhead(String _Track)
+	{
+		int __Idx = _Track.indexOf("ahead ");
+		if (__Idx < 0)
+			return 0;
+		int __Start = __Idx + "ahead ".length();
+		int __End = __Start;
+		// ASCII digits only — git's output is ASCII; Character.isDigit would
+		// also accept Unicode decimal digits the parser must not swallow.
+		while (__End < _Track.length() && _Track.charAt(__End) >= '0' && _Track.charAt(__End) <= '9')
+			++__End;
+		if (__End == __Start)
+			return 0;
+		try
+		{
+			return Integer.parseInt(_Track.substring(__Start, __End));
+		}
+		catch (NumberFormatException __Ex)
+		{
+			return 0; // absurdly long digit run — treat as no data
+		}
+	}
+
+	/**
+	 * Extract the behind count from git's upstream track summary
+	 * ({@code [behind 2]}, {@code [ahead 2, behind 1]}, {@code [gone]}, or
+	 * empty) — the "unpulled commits" number the quick-action button uses to
+	 * offer a pull. Anything without a {@code behind N} clause (in sync,
+	 * ahead only, upstream gone) yields 0.
+	 *
+	 * @param _Track the raw {@code %(upstream:track)} field
+	 * @return commits behind the upstream (0 = none reported)
+	 */
+	private static int ParseBehind(String _Track)
+	{
+		int __Idx = _Track.indexOf("behind ");
+		if (__Idx < 0)
+			return 0;
+		int __Start = __Idx + "behind ".length();
+		int __End = __Start;
+		// ASCII digits only — git's output is ASCII; Character.isDigit would
+		// also accept Unicode decimal digits the parser must not swallow.
+		while (__End < _Track.length() && _Track.charAt(__End) >= '0' && _Track.charAt(__End) <= '9')
+			++__End;
+		if (__End == __Start)
+			return 0;
+		try
+		{
+			return Integer.parseInt(_Track.substring(__Start, __End));
+		}
+		catch (NumberFormatException __Ex)
+		{
+			return 0; // absurdly long digit run — treat as no data
+		}
+	}
+
+	/**
+	 * Merge upstream links (and their unpushed/unpulled counts) into the freshly
+	 * parsed branch list. Only local branches are re-linked (git stores the
+	 * link on the local side; remote branches never carry one), and only when
+	 * a link exists — unlinked branches keep the record they were parsed
+	 * with. Records are replaced rather than mutated (records are immutable),
+	 * preserving every other component including the precomputed
+	 * {@link GitBranch#FullPath()}.
 	 *
 	 * @param _Branches the parsed branch list (modified in place)
 	 * @param _Output   the raw {@code GitCMDConstant.Upstreams} output
 	 */
 	private static void ApplyUpstreams(List<GitBranch> _Branches, String _Output)
 	{
-		Map<String, String> __Links = ParseUpstreamOutput(_Output);
+		Map<String, UpstreamLink> __Links = ParseUpstreamOutput(_Output);
 		if (__Links.isEmpty())
 			return;
 		for (int __Idx = 0; __Idx < _Branches.size(); ++__Idx)
@@ -672,11 +758,11 @@ public class GitOperator implements AutoCloseable
 			GitBranch __Branch = _Branches.get(__Idx);
 			if (__Branch.Remote())
 				continue;
-			String __Upstream = __Links.get(__Branch.FullPath());
-			if (__Upstream == null)
+			UpstreamLink __Link = __Links.get(__Branch.FullPath());
+			if (__Link == null)
 				continue;
 			_Branches.set(__Idx, new GitBranch(__Branch.Name(), __Branch.Namespace(),
-					__Branch.Remote(), __Branch.FullPath(), __Upstream));
+					__Branch.Remote(), __Branch.FullPath(), __Link.Upstream(), __Link.Unpushed(), __Link.Unpulled()));
 		}
 	}
 

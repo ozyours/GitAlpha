@@ -16,6 +16,7 @@ module com.gitalpha
     opens com.gitalpha to javafx.graphics;
     opens com.gitalpha.UI to javafx.graphics;
     opens com.gitalpha.UI.GitDirProjectManager to javafx.graphics;
+    opens com.gitalpha.UI.GitDirProjectManager.BranchListWidget to javafx.graphics;
     opens com.gitalpha.UI.GitDirTab to javafx.graphics;
     exports com.gitalpha.UI.GitDirProjectManager;
 

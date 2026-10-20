@@ -7,32 +7,43 @@ import java.util.List;
  * segments, the remote flag, the precomputed full path — the joined
  * {@code namespace/name} string (e.g. {@code feature/foo}, or
  * {@code origin/feature/foo} for remotes, since a remote's name is its first
- * namespace segment) — and the upstream link of a local branch. The full path
- * is a component rather than a derived method because it is consumed on every
- * keystroke and rebuild (cell rendering, active-branch comparison, activation
- * targeting and filter matching), while the picker's trie build and
- * collapse-all walk read {@link #Namespace()} segment by segment instead of
- * re-splitting the path; the 3- and 4-arg convenience constructors derive the
- * path so callers never build it by hand and it can never disagree with
- * {@link #Name()} / {@link #Namespace()}.
+ * namespace segment) — the upstream link of a local branch, and how many
+ * commits that local is ahead of (the unpushed count the branch views render)
+ * or behind (its unpulled count) its upstream. The full path is a component
+ * rather than a derived method because it is consumed on every keystroke and
+ * rebuild (cell rendering,
+ * active-branch comparison, activation targeting and filter matching), while
+ * the picker's trie build and collapse-all walk read {@link #Namespace()}
+ * segment by segment instead of re-splitting the path; the convenience
+ * constructors derive the path so callers never build it by hand and it can
+ * never disagree with {@link #Name()} / {@link #Namespace()}.
  *
- * @param Name      the leaf branch name (last path segment, e.g. {@code foo})
- * @param Namespace the namespace segments from root to leaf (empty for
- *                  root-level branches; the remote name leads for remotes)
- * @param Remote    true when the branch lives on a remote
- * @param FullPath  the full path (e.g. {@code feature/foo}); prefer the
- *                  convenience constructors, which compute it
- * @param Upstream  the linked remote-tracking branch full path (e.g.
- *                  {@code origin/main}); empty when the local branch has no
- *                  upstream configured — remote branches never carry one
+ * @param Name            the leaf branch name (last path segment, e.g. {@code foo})
+ * @param Namespace       the namespace segments from root to leaf (empty for
+ *                        root-level branches; the remote name leads for remotes)
+ * @param Remote          true when the branch lives on a remote
+ * @param FullPath        the full path (e.g. {@code feature/foo}); prefer the
+ *                        convenience constructors, which compute it
+ * @param Upstream        the linked remote-tracking branch full path (e.g.
+ *                        {@code origin/main}); empty when the local branch has
+ *                        no upstream configured — remote branches never carry one
+ * @param UnpushedCommits commits ahead of {@link #Upstream()} (git's
+ *                        {@code [ahead N]} track summary, captured by the same
+ *                        refresh query that fills the link); 0 when in sync,
+ *                        behind only, unlinked, or the upstream is gone
+ * @param UnpulledCommits commits behind {@link #Upstream()} (git's
+ *                        {@code [behind N]} track summary, captured by the same
+ *                        refresh query that fills the link); 0 when in sync,
+ *                        ahead only, unlinked, or the upstream is gone
  */
-public record GitBranch(String Name, List<String> Namespace, boolean Remote, String FullPath, String Upstream)
+public record GitBranch(String Name, List<String> Namespace, boolean Remote, String FullPath, String Upstream,
+		int UnpushedCommits, int UnpulledCommits)
 {
 	/**
 	 * Convenience constructor that derives {@link #FullPath()} from the name
-	 * and namespace and leaves the branch unlinked — the normal construction
-	 * path for branches without upstream data; an empty namespace yields the
-	 * bare leaf name.
+	 * and namespace and leaves the branch unlinked with no track counts —
+	 * the normal construction path for branches without upstream data; an
+	 * empty namespace yields the bare leaf name.
 	 *
 	 * @param Name      the leaf branch name
 	 * @param Namespace the namespace segments (empty for root-level branches)
@@ -42,13 +53,14 @@ public record GitBranch(String Name, List<String> Namespace, boolean Remote, Str
 	{
 		this(Name, Namespace, Remote,
 				Namespace.isEmpty() ? Name : String.join("/", Namespace) + "/" + Name,
-				"");
+				"", 0, 0);
 	}
 
 	/**
 	 * Convenience constructor that derives {@link #FullPath()} and carries an
-	 * upstream link — the construction path when the upstream query produced
-	 * one ({@code git for-each-ref} merge); the link may be empty to mean
+	 * upstream link while defaulting both track counts to 0; use the
+	 * canonical constructor when a track count is known (as the refresh's
+	 * {@code for-each-ref} merge does). The link may be empty to mean
 	 * "explicitly unlinked".
 	 *
 	 * @param Name      the leaf branch name
@@ -60,15 +72,15 @@ public record GitBranch(String Name, List<String> Namespace, boolean Remote, Str
 	{
 		this(Name, Namespace, Remote,
 				Namespace.isEmpty() ? Name : String.join("/", Namespace) + "/" + Name,
-				Upstream);
+				Upstream, 0, 0);
 	}
 
 	/**
 	 * Join the namespace segments back into a path — the
 	 * {@link #FullPath()} prefix before the {@link #Name()}, empty at root
 	 * level. Prefer iterating {@link #Namespace()} directly when walking
-	 * segment by segment (as the picker's trie build does), so the path is
-	 * never re-split.
+	 * segment by segment (as the shared branch list's trie build does), so
+	 * the path is never re-split.
 	 *
 	 * @return the namespace path (e.g. {@code feature} or
 	 *         {@code origin/feature}), or empty string for root-level branches
@@ -104,7 +116,7 @@ public record GitBranch(String Name, List<String> Namespace, boolean Remote, Str
 	@Override
 	public String toString()
 	{
-		return String.format("(Branch: %s, Namespace: %s, Remote: %b, Upstream: %s)",
-				Name, Namespace, Remote, Upstream.isEmpty() ? "-" : Upstream);
+		return String.format("(Branch: %s, Namespace: %s, Remote: %b, Upstream: %s, Unpushed: %d, Unpulled: %d)",
+				Name, Namespace, Remote, Upstream.isEmpty() ? "-" : Upstream, UnpushedCommits, UnpulledCommits);
 	}
 }

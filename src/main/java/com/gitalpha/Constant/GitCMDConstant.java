@@ -27,13 +27,26 @@ public class GitCMDConstant
     public static List<String> Checkout = List.of("checkout");
     /**
      * Local-branch upstream links: one line per local branch as
-     * {@code <path>\t<upstream-path>} (empty upstream when unlinked). Tab is a
-     * safe delimiter — git refnames forbid control characters.
+     * {@code <path>\t<upstream-path>\t<track>} (upstream and track both
+     * empty when unlinked; only track empty when in sync). The track field is
+     * git's {@code [ahead N]} /
+     * {@code [ahead N, behind M]} summary — both the unpushed and the
+     * unpulled counts the branch views and the quick-action button display
+     * come from it, in this same single call.
+     * {@code lstrip=2} (not {@code :short}) strips {@code refs/heads/}
+     * deterministically, so the key always equals {@code GitBranch.FullPath()}
+     * — git's short form would disambiguate against same-named tags
+     * ({@code heads/foo}). Tab is a safe delimiter — git refnames forbid
+     * control characters.
      */
     public static List<String> Upstreams = List.of("for-each-ref", "refs/heads",
-            "--format=%(refname:short)%09%(upstream:short)");
+            "--format=%(refname:lstrip=2)%09%(upstream:short)%09%(upstream:track)");
     /** Fetch every configured remote — the branch manager's Fetch button. */
     public static List<String> Fetch_All = List.of("fetch", "--all");
+    /** Push the checked-out branch to its upstream ({@code git push}). */
+    public static List<String> Push = List.of("push");
+    /** Pull the checked-out branch from its upstream ({@code git pull}). */
+    public static List<String> Pull = List.of("pull");
     public static List<String> Diff_Unstaged_File = List.of("diff");
     public static List<String> Diff_Staged_File = List.of("diff", "--cached");
 
