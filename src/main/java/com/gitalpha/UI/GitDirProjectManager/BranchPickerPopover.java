@@ -1,7 +1,7 @@
 package com.gitalpha.UI.GitDirProjectManager;
 
 import com.gitalpha.Type.GitBranch;
-import com.gitalpha.UI.Components.APopup;
+import com.atlasui.ui.components.APopup;
 import com.gitalpha.UI.GitDirProjectManager.BranchListWidget.BranchListEntry_Branch;
 import com.gitalpha.UI.GitDirProjectManager.BranchListWidget.BranchListWidget;
 import javafx.scene.control.ContextMenu;

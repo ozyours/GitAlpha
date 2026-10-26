@@ -12,6 +12,10 @@ module com.gitalpha
     requires java.desktop;
     requires org.fxmisc.richtext;
     requires org.fxmisc.flowless;
+    // The widget/theming layer (ATabWidget, ThemeManager, ISerializable, the
+    // variant enums) lives in the separate AtlasUI framework module, so this
+    // module must read it to build any UI.
+    requires com.atlasui;
     
     opens com.gitalpha to javafx.graphics;
     opens com.gitalpha.UI to javafx.graphics;
@@ -28,7 +32,6 @@ module com.gitalpha
     exports com.gitalpha.Engine.GitDirContainer;
     exports com.gitalpha.Type;
     exports com.gitalpha.UI;
-    exports com.gitalpha.UI.Components;
     exports com.gitalpha.UI.GitDirTab;
     exports com.gitalpha.UI.GitDirEntryUI;
     opens com.gitalpha.UI.GitDirEntryUI to javafx.graphics;

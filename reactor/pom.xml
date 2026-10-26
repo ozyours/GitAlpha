@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Build reactor for GitAlpha + AtlasUI.
+
+    GitAlpha itself must stay `jar`-packaged, and Maven only allows aggregation
+    from a `pom`-packaged project, so this small aggregator sits one directory
+    below the application. AtlasUI is a separate repository next to this one.
+
+    Build both with:
+        mvn -f reactor/pom.xml verify
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.gitalpha</groupId>
+    <artifactId>gitalpha-reactor</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <modules>
+        <!-- the application (this repository's root module) -->
+        <module>..</module>
+        <!-- the UI framework (sibling repository) -->
+        <module>../../AtlasUI</module>
+    </modules>
+</project>

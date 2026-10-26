@@ -1,5 +1,6 @@
 package com.gitalpha.Type;
 
+import com.atlasui.type.ISerializable;
 import org.json.JSONObject;
 
 /**
@@ -7,6 +8,12 @@ import org.json.JSONObject;
  * and shared by every repository: window position/size, maximized flag, the
  * three-column SplitPane divider positions, the Auto Restore preference, and
  * the Save-operation mode.
+ * <p>
+ * Serialization goes through the AtlasUI framework's
+ * {@link ISerializable} contract (interface type
+ * {@code com.atlasui.type.ISerializable}), which {@code AlphaEngine} drives
+ * when it writes and reads the session file; the key constants below therefore
+ * are the persisted JSON shape and must stay stable across releases.
  * Bounds are only mutated while
  * the window is windowed, so the fields always hold the last *windowed*
  * geometry — a maximized window's on-screen bounds are never persisted

@@ -1,14 +1,16 @@
 package com.gitalpha.UI;
 
 import com.gitalpha.Engine.AlphaEngine;
+import com.gitalpha.Engine.AlphaSettings;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Engine.GitDirContainer.ICloseGitDirEvent;
 import com.gitalpha.Engine.GitDirContainer.IOpenGitDirEvent;
 import com.gitalpha.Function.GitDirFunction;
-import com.gitalpha.UI.Components.ATabWidget;
-import com.gitalpha.UI.Components.INewTabRequestEvent;
-import com.gitalpha.UI.Components.ISubTabSelectionEvent;
-import com.gitalpha.UI.Components.ITabCloseEvent;
+// Widgets and theming come from the AtlasUI framework module (com.atlasui).
+import com.atlasui.ui.components.ATabWidget;
+import com.atlasui.ui.components.INewTabRequestEvent;
+import com.atlasui.ui.components.ISubTabSelectionEvent;
+import com.atlasui.ui.components.ITabCloseEvent;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
 import javafx.scene.Node;
@@ -47,6 +49,13 @@ public class AlphaUI extends BorderPane
 		// margins; the chrome VBox itself has no padding.
 		VBox __TopChrome = new VBox(new TopMenuBar(), new QuickCommandBar());
 		setTop(__TopChrome);
+
+		// Publish the persisted tab-face width (AlphaSettings.TabMaxSize) as the
+		// framework default before any tab widget exists: ATabWidget samples that
+		// default only in its constructor, so the main strip created below and
+		// every project's SMALL sub-tab strip inherit the same width (150
+		// otherwise) without the framework knowing about host settings.
+		ATabWidget.SetDefaultTabMaxWidth(AlphaSettings.Get().GetSettingEntry(AlphaSettings.TabMaxSize).GetValue_AsInteger());
 
 		TabWidgetInstance = new ATabWidget(true);
 		setCenter(TabWidgetInstance);

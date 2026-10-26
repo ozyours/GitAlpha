@@ -2,7 +2,7 @@ package com.gitalpha.Engine.GitDirContainer;
 
 import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
-import com.gitalpha.Type.ISerializable;
+import com.atlasui.type.ISerializable;
 import org.json.JSONArray;
 import org.json.JSONObject;
 

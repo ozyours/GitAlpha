@@ -1,10 +1,10 @@
 package com.gitalpha.UI.GitDirProjectManager.BranchListWidget;
 
-import com.gitalpha.Type.EButtonVariant;
+import com.atlasui.type.EButtonVariant;
 import com.gitalpha.Type.GitBranch;
-import com.gitalpha.UI.Components.AButton;
-import com.gitalpha.UI.Components.AListView;
-import com.gitalpha.UI.Components.ATextField;
+import com.atlasui.ui.components.AButton;
+import com.atlasui.ui.components.AListView;
+import com.atlasui.ui.components.ATextField;
 import javafx.animation.PauseTransition;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;

@@ -9,7 +9,7 @@ import javafx.application.Platform;
 import javafx.scene.layout.StackPane;
 
 /**
- * One project tab of the main window's {@link com.gitalpha.UI.Components.ATabWidget}:
+ * One project tab of the main window's {@link com.atlasui.ui.components.ATabWidget}:
  * a plain controller object (no JavaFX {@code Tab}) that owns a stable root
  * {@link StackPane} — the node registered as the widget tab's content. The
  * root hosts a {@link ProjectBrowser} until a project is opened, then hosts a

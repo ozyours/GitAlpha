@@ -16,6 +16,13 @@
             <version>20250517</version>
         </dependency>
 
+        <!-- AtlasUI: component + theming framework (built in this reactor from ../AtlasUI) -->
+        <dependency>
+            <groupId>com.atlasui</groupId>
+            <artifactId>atlasui</artifactId>
+            <version>${atlasui.version}</version>
+        </dependency>
+
         <!-- JavaFX dependencies -->
         <dependency>
             <groupId>org.openjfx</groupId>
@@ -63,6 +70,7 @@
         <maven.compiler.source>26</maven.compiler.source>
         <maven.compiler.target>26</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <atlasui.version>0.1.0-SNAPSHOT</atlasui.version>
     </properties>
 
 <!--    <build>-->

@@ -1,6 +1,6 @@
 package com.gitalpha.Type.Savable;
 
-import com.gitalpha.Type.ISerializable;
+import com.atlasui.type.ISerializable;
 import org.json.JSONObject;
 
 public class SavableObject implements ISerializable
