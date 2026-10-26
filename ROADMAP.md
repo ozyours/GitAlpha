@@ -262,6 +262,37 @@ Items that were discussed and have been committed to `master`.
       (Checkout / Create / Delete / Push / Pull + Branch Manager items, `SetupContextMenu` /
       `ShowContextMenu`, the right-click handler and the `ContextMenu` import); the picker popover
       and checkout-on-activation remain (`df62d17`)
+- [x] **Widget/theming layer extracted to AtlasUI** — `UI/Components` (17 files), the `Theme`
+      package (20 files: palettes, `ThemeManager`, the skins, `LightTheme`/`DarkTheme`) and the
+      framework types (`ThemeColor`, `EButtonVariant`, `ETextVariant`, `ETabButtonVariant`,
+      `EHideReason`, `ISerializable`) now live in the sibling AtlasUI project as module `com.atlasui`
+      (`com.atlasui.ui.components`, `com.atlasui.theme`, `com.atlasui.theme.skin`,
+      `com.atlasui.theme.themes`, `com.atlasui.type`); GitAlpha depends on
+      `com.atlasui:atlasui:0.1.0-SNAPSHOT` and `requires com.atlasui`, imports rewritten in the
+      60+ remaining files. `ATabWidget` drops its last host dependency (`AlphaSettings.TabMaxSize`)
+      for `SetDefaultTabMaxWidth` (default 150) fed once by `AlphaUI`, so main and SMALL sub-tab
+      strips share the width; the jar-project/aggregator restriction is worked around with
+      `reactor/pom.xml` (`mvn -f reactor/pom.xml verify`) (`3ba0d0e`)
+
+### Implemented, awaiting commit
+
+- [ ] **Cursor-following tab drag** — `ATabWidget` drag-reorder lifts the grabbed face and glues it
+      to the pointer: a press only arms the gesture, the 6 px threshold is measured as pointer
+      distance (diagonal drags included), and an `AnimationTimer` then re-glues the face every frame
+      from its live scene position (so the strip's scroll offset and the face's new slot are both
+      absorbed), auto-scrolls the header inside a 40 px viewport-edge band (`AUTO_SCROLL_EDGE_PX` /
+      `AUTO_SCROLL_MAX_PX`, pixel delta converted to an `hvalue` fraction of the scrollable range,
+      applied immediately so the follow does not lag a frame) so tabs scrolled out of view stay
+      reachable with a stationary pointer, and re-runs the hit test; the permutation stays live while
+      the neighbours slide into their slots with a 130 ms eased `Timeline` (started from their
+      pre-move visual offset, restarted per permutation), the hit test reads slot midpoints with
+      translates excluded so a slide cannot feed back and oscillate the order, and the released face
+      snaps back over 140 ms; the lifted face carries a `:dragging` pseudo-class (brighter +18%
+      shade, drop shadow, closed-hand cursor) and is raised with `viewOrder(-1)` rather than
+      `toFront()` (which would corrupt the tab order); `TabButtonSkin` gains the `:dragging` rule as
+      its 13th color argument; `AGENTS.md` updated — **never committed in GitAlpha**: the code moved
+      to the AtlasUI checkout with the extraction above, and that directory is not a git repo yet,
+      so this work currently exists only as files there and in `stash@{1}` ("restore point 1")
 
 ---
 
