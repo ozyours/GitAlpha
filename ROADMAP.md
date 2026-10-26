@@ -272,7 +272,8 @@ Items that were discussed and have been committed to `master`.
       60+ remaining files. `ATabWidget` drops its last host dependency (`AlphaSettings.TabMaxSize`)
       for `SetDefaultTabMaxWidth` (default 150) fed once by `AlphaUI`, so main and SMALL sub-tab
       strips share the width; the jar-project/aggregator restriction is worked around with
-      `reactor/pom.xml` (`mvn -f reactor/pom.xml verify`) (`3ba0d0e`)
+      `reactor/pom.xml` (`mvn -f reactor/pom.xml verify`); packages renamed to the PascalCase
+      `com.atlasui.Type` / `com.atlasui.Theme` / `com.atlasui.UI.Components` (`3ba0d0e`, `fa0c706`)
 
 ### Implemented, awaiting commit
 
