@@ -4,7 +4,7 @@ import com.gitalpha.Constant.GitCMDConstant;
 import com.gitalpha.Engine.GitDirContainer.IScannedFilesUpdatedEvent;
 import com.gitalpha.Type.FileChange;
 import com.gitalpha.Type.GitBranch;
-import com.atlasui.type.ISerializable;
+import com.atlasui.Type.ISerializable;
 import javafx.util.Pair;
 import org.json.JSONObject;
 

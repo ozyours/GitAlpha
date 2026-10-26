@@ -266,8 +266,8 @@ Items that were discussed and have been committed to `master`.
       package (20 files: palettes, `ThemeManager`, the skins, `LightTheme`/`DarkTheme`) and the
       framework types (`ThemeColor`, `EButtonVariant`, `ETextVariant`, `ETabButtonVariant`,
       `EHideReason`, `ISerializable`) now live in the sibling AtlasUI project as module `com.atlasui`
-      (`com.atlasui.ui.components`, `com.atlasui.theme`, `com.atlasui.theme.skin`,
-      `com.atlasui.theme.themes`, `com.atlasui.type`); GitAlpha depends on
+      (`com.atlasui.UI.Components`, `com.atlasui.Theme`, `com.atlasui.Theme.Skin`,
+      `com.atlasui.Theme.Themes`, `com.atlasui.Type`); GitAlpha depends on
       `com.atlasui:atlasui:0.1.0-SNAPSHOT` and `requires com.atlasui`, imports rewritten in the
       60+ remaining files. `ATabWidget` drops its last host dependency (`AlphaSettings.TabMaxSize`)
       for `SetDefaultTabMaxWidth` (default 150) fed once by `AlphaUI`, so main and SMALL sub-tab

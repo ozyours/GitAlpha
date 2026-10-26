@@ -1,6 +1,6 @@
 package com.gitalpha.Engine;
 
-import com.atlasui.type.ISerializable;
+import com.atlasui.Type.ISerializable;
 import com.gitalpha.Type.ESettingEntryType;
 import org.json.JSONObject;
 

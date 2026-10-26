@@ -1,6 +1,6 @@
 package com.gitalpha.UI;
 
-import com.atlasui.theme.ThemeManager;
+import com.atlasui.Theme.ThemeManager;
 import javafx.scene.control.Alert;
 
 /**

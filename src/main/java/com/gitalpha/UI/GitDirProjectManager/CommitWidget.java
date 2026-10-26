@@ -2,12 +2,12 @@ package com.gitalpha.UI.GitDirProjectManager;
 
 import com.gitalpha.Engine.ERefreshPolicy;
 import com.gitalpha.Engine.GitDir;
-import com.atlasui.type.ETextVariant;
-import com.atlasui.theme.ThemeManager;
-import com.atlasui.ui.components.AButton;
-import com.atlasui.ui.components.AText;
-import com.atlasui.ui.components.ATextArea;
-import com.atlasui.ui.components.ATextField;
+import com.atlasui.Type.ETextVariant;
+import com.atlasui.Theme.ThemeManager;
+import com.atlasui.UI.Components.AButton;
+import com.atlasui.UI.Components.AText;
+import com.atlasui.UI.Components.ATextArea;
+import com.atlasui.UI.Components.ATextField;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;

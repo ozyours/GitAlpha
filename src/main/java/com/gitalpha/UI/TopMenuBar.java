@@ -1,7 +1,7 @@
 package com.gitalpha.UI;
 
 import com.gitalpha.Engine.GitDir;
-import com.atlasui.ui.components.ATopMenuBar;
+import com.atlasui.UI.Components.ATopMenuBar;
 import com.gitalpha.UI.GitDirProjectManager.BranchManagerWidget;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import com.gitalpha.UI.Stash.StashWidget;

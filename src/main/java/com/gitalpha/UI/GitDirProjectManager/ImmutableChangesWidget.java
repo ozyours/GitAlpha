@@ -1,7 +1,7 @@
 package com.gitalpha.UI.GitDirProjectManager;
 import com.gitalpha.Type.EFileChangeStatus;
 import com.gitalpha.Type.IFileListEntry;
-import com.atlasui.ui.components.AListView;
+import com.atlasui.UI.Components.AListView;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.control.ListCell;

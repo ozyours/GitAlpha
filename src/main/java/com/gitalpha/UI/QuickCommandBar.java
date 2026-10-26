@@ -1,6 +1,6 @@
 package com.gitalpha.UI;
 
-import com.atlasui.ui.components.AButton;
+import com.atlasui.UI.Components.AButton;
 import javafx.geometry.Insets;
 import javafx.scene.control.Button;
 import javafx.scene.layout.HBox;

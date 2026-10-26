@@ -3,7 +3,7 @@ package com.gitalpha.UI.GitDirTab;
 import com.gitalpha.Engine.AlphaEngine;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Function.GitDirFunction;
-import com.atlasui.theme.ThemeManager;
+import com.atlasui.Theme.ThemeManager;
 import com.gitalpha.UI.AlphaUI;
 import com.gitalpha.UI.GitDirEntryUI.GitDirContainerUI;
 import com.gitalpha.UI.IObject;

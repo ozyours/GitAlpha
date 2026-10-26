@@ -1,7 +1,7 @@
 package com.gitalpha.UI;
 
 import com.gitalpha.Engine.AlphaEngine;
-import com.atlasui.theme.ThemeManager;
+import com.atlasui.Theme.ThemeManager;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;

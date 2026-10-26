@@ -7,10 +7,10 @@ import com.gitalpha.Engine.GitDirContainer.ICloseGitDirEvent;
 import com.gitalpha.Engine.GitDirContainer.IOpenGitDirEvent;
 import com.gitalpha.Function.GitDirFunction;
 // Widgets and theming come from the AtlasUI framework module (com.atlasui).
-import com.atlasui.ui.components.ATabWidget;
-import com.atlasui.ui.components.INewTabRequestEvent;
-import com.atlasui.ui.components.ISubTabSelectionEvent;
-import com.atlasui.ui.components.ITabCloseEvent;
+import com.atlasui.UI.Components.ATabWidget;
+import com.atlasui.UI.Components.INewTabRequestEvent;
+import com.atlasui.UI.Components.ISubTabSelectionEvent;
+import com.atlasui.UI.Components.ITabCloseEvent;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
 import javafx.application.Platform;
 import javafx.scene.Node;
