@@ -274,6 +274,16 @@ Items that were discussed and have been committed to `master`.
       strips share the width; the jar-project/aggregator restriction is worked around with
       `reactor/pom.xml` (`mvn -f reactor/pom.xml verify`); packages renamed to the PascalCase
       `com.atlasui.Type` / `com.atlasui.Theme` / `com.atlasui.UI.Components` (`3ba0d0e`, `fa0c706`)
+- [x] **Tab order persisted from drag-reorder** — `AlphaUI` consumes `ATabWidget`'s
+      `ITabOrderChangeEvent` (strong listener field, since the widget holds it weakly) and mirrors the
+      new strip order onto the engine's open-repository list — the order the session stores and
+      `RestoreOpenTabs` replays — through the new `AlphaEngine.ReorderOpenGitDirs(List<GitDir>)`,
+      which rewrites the live list in place (identity matching; `GitDir` has no value equality) and
+      appends unmentioned repositories so a partial view can never drop an open repo. Tabs without a
+      repository (empty "New Tab", or one whose widget is still queued on `runLater`) contribute no
+      entry; the event fires once per slot crossing, so the list reorder runs inline while the
+      session write is debounced by a 250 ms `PauseTransition` (`TAB_ORDER_SAVE_DELAY_MS`) — one write
+      per settled gesture (`db3fe49`)
 
 ### Implemented, awaiting commit
 
