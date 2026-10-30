@@ -11,15 +11,20 @@ import com.atlasui.UI.Components.ATabWidget;
 import com.atlasui.UI.Components.INewTabRequestEvent;
 import com.atlasui.UI.Components.ISubTabSelectionEvent;
 import com.atlasui.UI.Components.ITabCloseEvent;
+import com.atlasui.UI.Components.ITabOrderChangeEvent;
 import com.gitalpha.UI.GitDirTab.GitDirTabButton;
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.util.Duration;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,12 +33,21 @@ import java.util.Map;
  * {@link ATabWidget} (modifiable: {@code "+"} affix, per-tab close faces and
  * drag-to-reorder). Owns the tab-per-project binding map — keyed by the tabs'
  * stable root nodes, so lookups survive reordering — and restores the saved
- * tabs on startup.
+ * tabs on startup. A drag-reorder is mirrored onto the engine's open-repository
+ * list, which is what the session stores, so the restored strip replays the
+ * user's arrangement left to right.
  */
 public class AlphaUI extends BorderPane
 {
 	/** Singleton root UI, assigned in the constructor; the app reaches the window layout through this. */
 	public static AlphaUI Instance;
+
+	/**
+	 * Quiet period after the last slot crossing before the reordered session is
+	 * written, so a drag gesture costs one session write instead of one per
+	 * crossed boundary.
+	 */
+	private static final double TAB_ORDER_SAVE_DELAY_MS = 250;
 
 	public AlphaUI()
 	{
@@ -98,6 +112,16 @@ public class AlphaUI extends BorderPane
 			}
 		};
 		TabWidgetInstance.AddSelectionEvent(SelectionListener);
+		// Drag-reorder: mirror the new tab order onto the engine's open-repository
+		// list, which is what the session stores and what RestoreOpenTabs replays
+		// (so a reordered strip comes back in the same order next launch). The
+		// event fires once per slot crossing during a drag, so the list reorder
+		// runs inline (cheap) while the session write is debounced to one call
+		// per settled gesture.
+		TabOrderSaveTimer = new PauseTransition(Duration.millis(TAB_ORDER_SAVE_DELAY_MS));
+		TabOrderSaveTimer.setOnFinished(_Event -> AlphaEngine.Instance.SaveSession());
+		TabOrderChangeListener = (_From, _To) -> SyncOpenGitDirOrderToTabs();
+		TabWidgetInstance.AddTabOrderChangeEvent(TabOrderChangeListener);
 
 		InitialTab = CreateProjectTab(null); // first AddTab is auto-selected
 
@@ -137,6 +161,10 @@ public class AlphaUI extends BorderPane
 	private final ITabCloseEvent TabCloseListener;
 	/** Strong reference to the tab selection handler; prevents WeakReference GC by the widget */
 	private final ISubTabSelectionEvent SelectionListener;
+	/** Strong reference to the tab drag-reorder handler; prevents WeakReference GC by the widget */
+	private final ITabOrderChangeEvent TabOrderChangeListener;
+	/** Debounces the session write that follows a drag-reorder: restarted on every slot crossing so a whole gesture costs one write */
+	private final PauseTransition TabOrderSaveTimer;
 
 	private final Map<Path, GitDirTabButton> OpenTabsByProjectPath;
 
@@ -219,6 +247,44 @@ public class AlphaUI extends BorderPane
 		int __Index = TabWidgetInstance.IndexOf(_TabButton.GetRoot());
 		if (__Index >= 0)
 			TabWidgetInstance.SetTabTitle(__Index, _TabButton.GetTitle());
+	}
+
+	/**
+	 * Mirror the current tab order onto the engine's open-repository list, so
+	 * "open repositories" means "open tabs, left to right". Handles a
+	 * drag-reorder: the widget has already completed the permutation when this
+	 * runs, so reading {@link ATabWidget#GetTabContents()} yields the new
+	 * sequence.
+	 * <p>
+	 * Tabs without a repository (an empty "New Tab" still showing
+	 * {@link com.gitalpha.UI.GitDirTab.ProjectBrowser}, or one whose project
+	 * widget is still being built on the next pulse) contribute no entry, so a
+	 * repository can never be dropped from the open list by a partial view —
+	 * the engine appends the unmentioned ones after the ordered sequence.
+	 * The session write is deferred through {@link #TabOrderSaveTimer} because
+	 * a single drag fires this once per slot crossing.
+	 */
+	private void SyncOpenGitDirOrderToTabs()
+	{
+		List<GitDir> __OrderedGitDirs = new ArrayList<>();
+		for (Node __Content : TabWidgetInstance.GetTabContents())
+		{
+			GitDirTabButton __Tab = TabsByRoot.get(__Content);
+			if (__Tab == null)
+				continue;
+
+			GitDir __GitDir = __Tab.GetGitDirTarget();
+			if (__GitDir == null)
+				continue;
+
+			__OrderedGitDirs.add(__GitDir);
+		}
+
+		if (!AlphaEngine.Instance.ReorderOpenGitDirs(__OrderedGitDirs))
+			return;
+
+		// Restart on every crossing: the write happens once the strip settles.
+		TabOrderSaveTimer.playFromStart();
 	}
 
 	/**

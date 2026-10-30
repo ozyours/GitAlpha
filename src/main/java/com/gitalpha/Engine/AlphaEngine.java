@@ -281,6 +281,52 @@ public class AlphaEngine
 	}
 
 	/**
+	 * Reorders the open-repository list to match the given sequence, which is
+	 * how the tab strip reports a drag-reorder: the session file stores the
+	 * open list in order, and restoring it in that order reproduces the tab
+	 * arrangement. Repositories missing from {@code _OrderedGitDirs} (a tab
+	 * without a repository, or a repository whose tab is mid-build) keep their
+	 * relative position at the end of the list instead of being dropped, so a
+	 * partial view can never lose an open repository.
+	 * <p>
+	 * Only the sequence changes: no watcher, refresh or event is touched, and
+	 * the caller persists the session when it sees a {@code true} return.
+	 *
+	 * @param _OrderedGitDirs the desired leading sequence (may be null/empty)
+	 * @return true if the stored order actually changed
+	 */
+	public boolean ReorderOpenGitDirs(List<GitDir> _OrderedGitDirs)
+	{
+		List<GitDir> __Current = OpenGitDirList.GetGitDirs();
+		List<GitDir> __Reordered = new ArrayList<>(__Current.size());
+
+		if (_OrderedGitDirs != null)
+		{
+			for (GitDir __GitDir : _OrderedGitDirs)
+			{
+				// Identity/indexOf: GitDir has no value equality, and duplicates
+				// of the same path are already excluded by TryOpenGitDir.
+				if (__GitDir != null && __Current.contains(__GitDir) && !__Reordered.contains(__GitDir))
+					__Reordered.add(__GitDir);
+			}
+		}
+
+		for (GitDir __GitDir : __Current)
+		{
+			if (!__Reordered.contains(__GitDir))
+				__Reordered.add(__GitDir);
+		}
+
+		if (__Reordered.equals(__Current))
+			return false;
+
+		// In place: callers hold the live list returned by GetOpenGitDirList().
+		__Current.clear();
+		__Current.addAll(__Reordered);
+		return true;
+	}
+
+	/**
 	 * Serializes the whole session (open/recent repos, window bounds, shared
 	 * Stash-window state and shared left-pane width) to ~/.gitalpha/session.json.
 	 * Skipped entirely when the serialized root hashes to the last written

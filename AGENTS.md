@@ -46,7 +46,7 @@ AlphaEngine (singleton: AlphaEngine.Instance — never construct a second)
        IOpenGitDirEvent / ICloseGitDirEvent / IRefreshGitDirEvent   (com.gitalpha.Engine.GitDirContainer)
 
 AlphaUI (BorderPane) → top: TopMenuBar + QuickCommandBar (placeholder entries except Git → Stash… and Git → Branch Manager…, see ROADMAP.md; shared "not implemented" notice: PlaceholderNotice); center: ATabWidget (modifiable: "+" affix creates tabs, per-tab × close faces, drag-to-reorder)
-  ├─ GitDirTabButton (plain IObject controller, no javafx Tab) → stable root StackPane hosting ProjectBrowser (path field + recent repo list); AlphaUI maps root → tab (TabsByRoot) so lookups survive reorder
+  ├─ GitDirTabButton (plain IObject controller, no javafx Tab) → stable root StackPane hosting ProjectBrowser (path field + recent repo list); AlphaUI maps root → tab (TabsByRoot) so lookups survive reorder; a drag-reorder also fires ITabOrderChangeEvent, whose AlphaUI listener mirrors the new strip order onto the engine's open-repo list (AlphaEngine.ReorderOpenGitDirs) and debounces the session write (250 ms), so the saved order replays the tabs left to right
   └─ OpenProject(gitDir) → GitDirWidget (StackPane) — content is an outer split pane:
      │   left = branch row + sub-tab panel (user-resizable; width persisted globally as a plain
      │          scalar in the session file via AlphaEngine):
