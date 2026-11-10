@@ -221,6 +221,12 @@ public class AlphaEngine
 	 * Opens a repository: validates the path, reuses an already-open GitDir if
 	 * present, otherwise creates one, adds it to the open + recent lists and
 	 * broadcasts the open event.
+	 * <p>
+	 * Opening a repository here does <b>not</b> run its open-time work: nothing
+	 * has been built to consume it yet, so the caller that makes the repository
+	 * visible calls {@link GitDir#OnOpen()} once its widget exists (the project
+	 * tab does, from its deferred open path). A repository can therefore sit in
+	 * the open list with its watcher still stopped.
 	 *
 	 * @param _ProjectPath the repository path (any path inside the repo works)
 	 * @return the GitDir for the repository, or null if the path is invalid
@@ -246,10 +252,12 @@ public class AlphaEngine
 	}
 
 	/**
-	 * Closes a repository: removes it from the open list, stops the
-	 * filesystem watcher and broadcasts the close event. The watcher must
-	 * be stopped before the broadcast so no stale callback reaches the UI
-	 * after the tab is disposed. No-op if the path is not currently open.
+	 * Closes a repository: removes it from the open list, runs the repository's
+	 * close-time work ({@link GitDir#OnClose()} — today: stop the watcher) and
+	 * broadcasts the close event. That work must run before the broadcast so no
+	 * stale callback reaches a UI whose tab is already disposed, and so the OS
+	 * handles are free when subscribers act on the close. No-op if the path is not
+	 * currently open.
 	 *
 	 * @param _ProjectPath the repository path to close
 	 */
@@ -264,10 +272,10 @@ public class AlphaEngine
 		if (__Index >= 0)
 		{
 			var __GitDir = OpenGitDirList.GetGitDirs().remove(__Index);
-			// Release OS watch handles before broadcasting the close event;
-			// the watcher's debounced callback may still be pending on the
-			// debounce timer — Stop cancels the timer first.
-			__GitDir.StopWatching();
+			// Close-time work first, broadcast second: OnClose stops the watcher,
+			// which cancels any refresh still pending on its debounce timer and
+			// frees the OS watch handles before subscribers hear the close.
+			__GitDir.OnClose();
 			BroadcastICloseGitDirEvent(__GitDir);
 		}
 	}

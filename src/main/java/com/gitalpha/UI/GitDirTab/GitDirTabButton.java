@@ -82,9 +82,11 @@ public class GitDirTabButton implements IObject
 	/**
 	 * Open the given repository in this tab: dispose any previous project,
 	 * host a fresh {@link GitDirWidget} inside the stable root and bind the
-	 * tab to the engine. The watcher is started after the widget is wired
-	 * so the initial callback fires on the next debounced refresh, not
-	 * before the UI is ready to consume it.
+	 * tab to the engine. The repository's open-time work — {@link GitDir#OnOpen()},
+	 * which also creates the change watcher on the first open and re-arms it on
+	 * later ones — runs afterwards, once the widget is wired and bound, so the
+	 * first callback from the watcher lands on a UI that can already consume the
+	 * refresh it asks for.
 	 */
 	public void OpenProject(GitDir _GitDir)
 	{
@@ -106,16 +108,20 @@ public class GitDirTabButton implements IObject
 			ProjectManagerInstance = new GitDirWidget(this, __Dir);
 			Root.getChildren().setAll(ProjectManagerInstance);
 			AlphaUIInstance.BindOpenProjectTab(__Dir, this);
-			// Start the filesystem watcher only after the widget is wired and
-			// registered — the debounced callback fires
-			// AttemptSaveAndBroadcastRefresh which drives UI rebuilds.
-			__Dir.StartWatching();
+			// Repository opened: run the open-time work (today: create/re-arm the
+			// git-poll change watcher) only now that the tab, widget and engine
+			// binding exist. The watcher reports changes through
+			// AttemptSaveAndBroadcastRefresh, which drives the UI rebuild.
+			__Dir.OnOpen();
 		});
 	}
 
 	/**
 	 * Tab-closed entry point, invoked by AlphaUI after the ATabWidget removed
 	 * this tab: disposes the project widget and unbinds/closes the repository.
+	 * The repository's own close-time work is not done here — the engine's close
+	 * path runs {@link GitDir#OnClose()} before it broadcasts, so this method
+	 * only has to hand the repository over.
 	 */
 	public void OnClosed()
 	{

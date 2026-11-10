@@ -18,29 +18,39 @@ import java.util.Objects;
 /**
  * GitDir manages a .git directory, providing operations to list branches, detect file changes,
  * run git commands, and retrieve diffs.
+ * <p>
+ * Construction acquires no OS resources — not even the change watcher, which
+ * {@link #OnOpen()} creates lazily: the repository's open/close hooks
+ * {@link #OnOpen()} and {@link #OnClose()} bracket the time it is an open
+ * project, and everything they attach (today the {@link GW_GitPoll} watcher) is
+ * released again on close.
  */
 public class GitDir implements ISerializable
 {
 	/**
-	 * Default constructor
+	 * Default constructor: a repository with no path yet, as used for
+	 * session-restored entries whose path is assigned later. Nothing is allocated
+	 * for the watcher here — it is created by {@link #OnOpen()} and resolves its
+	 * root lazily at that point, so it is safe to construct before
+	 * {@code GitDirPath} is set.
 	 */
 	public GitDir()
 	{
 		GitDirPath = null;
-		Watcher = new GitWatcher(this, () ->
-			AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("file-watcher", this));
 	}
 
 	/**
-	 * Constructor with path
+	 * Constructor with path. Only {@code GitDirPath} is assigned here — the change
+	 * watcher is not created by construction but by {@link #OnOpen()} on the first
+	 * open.
 	 *
-	 * @param GitDirPath The path of .git folder
+	 * @param GitDirPath The path of .git folder; the working-tree root is its
+	 *                   parent, so this is the path the watcher resolves its
+	 *                   watch root from when {@link #OnOpen()} starts it
 	 */
 	public GitDir(Path GitDirPath)
 	{
 		this.GitDirPath = GitDirPath;
-		Watcher = new GitWatcher(this, () ->
-			AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("file-watcher", this));
 	}
 
 	/** Path to the .git directory */
@@ -89,11 +99,19 @@ public class GitDir implements ISerializable
 	private final GitStashOperator StashOperator = new GitStashOperator(this);
 
 	/**
-	 * Filesystem watcher that monitors the working tree for changes and
-	 * triggers a debounced refresh. Created in the constructor; lifecycle
-	 * managed via {@link #StartWatching()} and {@link #StopWatching()}.
+	 * Change watcher for the working tree: reports changes so the repository
+	 * refreshes. Deliberately non-final and left unassigned by both constructors —
+	 * {@link #OnOpen()} creates it on the first open, so a repository that is never
+	 * opened (session restore, disposable probes) pays nothing for it, and every
+	 * later open re-arms that same instance instead of allocating a second one.
+	 * Null until then; a close stops it but never discards it.
+	 * <p>
+	 * Typed as the {@link GitWatcher} contract while {@code OnOpen} binds the
+	 * current mechanism ({@link GW_GitPoll}), so swapping mechanisms — back to
+	 * {@link GW_WatchService}, which stays an available alternative, or to a future
+	 * one — is a one-line change there.
 	 */
-	private final GitWatcher Watcher;
+	private GitWatcher Watcher;
 
 	/** @return the stored .git directory path */
 	public Path GetGitDirPath()
@@ -249,31 +267,102 @@ public class GitDir implements ISerializable
 	}
 
 	/**
-	 * @return the {@link GitWatcher} that monitors the working tree for changes
+	 * @return the {@link GitWatcher} that reports working-tree changes (currently a
+	 *         {@link GW_GitPoll}); <b>null before the repository is opened for the
+	 *         first time</b>, since {@link #OnOpen()} is what creates it — null is
+	 *         the normal pre-open answer, not an error, so callers must null-check.
+	 *         A closed repository keeps its watcher (stopped, not discarded), so
+	 *         after the first open this returns non-null for the rest of the
+	 *         {@link GitDir}'s life. The base type is deliberate — callers use the
+	 *         Start/Stop/IsRunning lifecycle, so the concrete mechanism stays
+	 *         replaceable without touching them. {@link GitDir} itself drives
+	 *         Start/Stop from {@link #OnOpen()}/{@link #OnClose()}, so treat the
+	 *         watcher's lifecycle as owned here rather than start it directly
 	 */
 	public GitWatcher GetWatcher()
 	{
 		return Watcher;
 	}
 
+	// -------------------------------------------------------------------------
+	// Repository lifecycle
+	// -------------------------------------------------------------------------
+
 	/**
-	 * Start watching the working tree for filesystem changes. When changes are
-	 * detected, a debounced refresh is triggered via
-	 * {@link AlphaEngine#AttemptSaveAndBroadcastRefresh}.
-	 * No-op if the root path is invalid (e.g. default-constructed GitDir).
+	 * Repository opened: attach everything this {@link GitDir} needs for as long
+	 * as it is an open project. This is the repository's single open-time hook —
+	 * the caller that makes the repository visible runs it (today the project tab,
+	 * deferred until its {@code GitDirWidget} is installed), so nothing is
+	 * attached before a consumer can act on it and the engine's open call itself
+	 * stays cheap.
+	 * <p>
+	 * Today the only open-time work is the change watcher: the first open creates
+	 * it ({@link GW_GitPoll} here) and every open after that re-arms the same
+	 * instance, so repeated open/close cycles do not accumulate watchers. The
+	 * mechanism is what brings a change made by another program to the UI: it polls
+	 * {@code git status} on its own daemon thread, then calls
+	 * {@link AlphaEngine#AttemptSaveAndBroadcastRefresh} from that thread — never
+	 * from the JavaFX thread — so the resulting UI rebuild has to be scheduled by
+	 * that broadcast. Per-repository open-time work of any other kind (background
+	 * scans, caches, subscriptions, preloaded data) belongs here too, with its
+	 * teardown in {@link #OnClose()}.
+	 * <p>
+	 * No-op for the watcher when there is nothing to attach: the root path may
+	 * still be invalid (a default-constructed {@link GitDir}) and the mechanism may
+	 * be disabled by a system property. The watcher is still created in that case,
+	 * so {@link #GetWatcher()} is non-null once the repository has been opened.
+	 * <p>
+	 * Pair each call with exactly one {@link #OnClose()}. A second {@code OnOpen()}
+	 * without an intervening close does not allocate a second watcher, but it does
+	 * re-enter {@code Start()}, which is not idempotent — the polling mechanism
+	 * would leave its previous scheduler running — so only the pairing keeps the
+	 * held resources counted right.
 	 */
-	public void StartWatching()
+	public void OnOpen()
 	{
+		// ---------------------------------------------------------------------
+		// Open-time work: acquire per-repository resources here.
+		// ---------------------------------------------------------------------
+
+		// Created on the first open, not in the constructor: a repository that is
+		// never opened (session restore, disposable probes) pays nothing for it.
+		if (Watcher == null)
+			Watcher = new GW_GitPoll(this, () ->
+				AlphaEngine.Instance.AttemptSaveAndBroadcastRefresh("git-poll", this));
+
 		Watcher.Start();
 	}
 
 	/**
-	 * Stop watching the working tree and release all OS resources.
-	 * Safe to call multiple times.
+	 * Repository closing: release everything {@link #OnOpen()} attached. The
+	 * close-time counterpart of that hook, and the only place per-repository
+	 * teardown belongs. {@code AlphaEngine.TryCloseGitDir} runs it while closing a
+	 * repository and <b>before</b> broadcasting the close event, so the resources
+	 * are already released when subscribers hear about the close, and a change
+	 * notification queued by the watcher can never fire against a repository that
+	 * is no longer open.
+	 * <p>
+	 * The watcher is stopped first: that kills any in-flight scan, drops the
+	 * baseline it had recorded (so a later open re-seeds instead of reporting
+	 * whatever changed while closed) and shuts its scheduler down. The instance
+	 * itself is kept, never nulled — stopping is what makes the next
+	 * {@link #OnOpen()} re-arm it rather than allocate a second watcher. Any other
+	 * open-time resource added to {@link #OnOpen()} must be released here, in
+	 * reverse order (newest first), so teardown never leaves a half-disposed
+	 * repository.
+	 * <p>
+	 * Safe to call multiple times and before any {@link #OnOpen()} — stopping is
+	 * idempotent and the watcher is null-guarded, so a never-created watcher is
+	 * simply skipped rather than faulting. A close path that passes through more
+	 * than one teardown point therefore needs no "already closed" guard.
 	 */
-	public void StopWatching()
+	public void OnClose()
 	{
-		Watcher.Stop();
+		// ---------------------------------------------------------------------
+		// Close-time work: release what OnOpen() acquired, newest first.
+		// ---------------------------------------------------------------------
+		if (Watcher != null)
+			Watcher.Stop();
 	}
 
 	/**

@@ -1,98 +1,133 @@
 package com.gitalpha.Engine;
 
-import java.io.IOException;
-import java.nio.file.*;
-import java.util.HashMap;
-import java.util.Map;
+import java.nio.file.Path;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Watches a directory tree for filesystem changes using {@link WatchService}.
- * Designed to monitor a {@link GitDir}'s working-tree root — registers every
- * subdirectory recursively, tracks all registrations in a map, and cleans up
- * properly when directories are deleted.
+ * Base class for the repository change watchers: the shared contract every
+ * detection mechanism implements, so a {@link GitDir} can be given whichever
+ * mechanism suits the platform and the workload.
  * <p>
- * <b>Event handling:</b>
+ * A watcher exists to answer one question — "did the working tree change?" — and
+ * to report it through the change callback it was constructed with. How it
+ * answers is the subclass's business: {@link java.nio.file.WatchService}
+ * registrations, a polling scan, or anything else. This class owns only the
+ * parts that do not depend on the mechanism:
  * <ul>
- *   <li>Folder created  → registered for watching (bookkeeping only, no refresh)</li>
- *   <li>Folder deleted  → unregistered + all child keys cancelled and removed</li>
- *   <li>File created/modified/deleted → debounced refresh callback</li>
+ *   <li>the {@link GitDir} being watched and the callback to fire,</li>
+ *   <li>the start / stop / running lifecycle contract,</li>
+ *   <li>a shared trailing-edge debounce timer, because every mechanism sees
+ *       bursts (a checkout touching hundreds of files) rather than isolated
+ *       events, and firing once per burst is what the refresh pipeline expects.</li>
  * </ul>
  * <p>
- * The {@code .git} directory and its contents are always skipped to avoid noise
- * from internal git operations. The watch loop runs on a daemon virtual thread
- * so it never blocks the JavaFX thread or prevents JVM shutdown.
+ * <b>Contract for subclasses:</b> {@code Start()} acquires whatever OS or
+ * scheduling resources the mechanism needs and is a no-op when it cannot watch
+ * (missing root, disabled by setting). {@code Stop()} releases all of them,
+ * cancels any pending debounce, and is safe to call more than once and from any
+ * thread. {@code IsRunning()} reports whether observation is currently active,
+ * derived from live state rather than a flag that can drift. Change
+ * notifications go through {@link #FireChange()} (immediate, on the caller's
+ * thread) or {@link #ScheduleChange()} (debounced, on the shared debounce
+ * daemon thread) — never assume the JavaFX thread; the callback is responsible
+ * for marshalling to the UI thread.
  * <p>
- * Usage: construct with a {@link GitDir} and change callback, call {@link #Start()}
- * to begin watching, and {@link #Stop()} to release resources.
+ * Subclasses own their detection thread; this class provides no thread of its
+ * own except the lazily opened debounce timer.
  */
-public class GitWatcher
+public abstract class GitWatcher
 {
-	private static final String GIT_DIR_NAME = ".git";
+	/**
+	 * Name of the daemon thread that runs the shared debounce timer. Daemon, so
+	 * a watcher that is never stopped cannot keep the JVM alive.
+	 */
+	private static final String DEBOUNCE_THREAD_NAME = "GitWatcher-debounce";
 
 	/**
-	 * Debounce interval: filesystem events within this window are coalesced
-	 * into a single callback. Prevents overwhelming downstream consumers
-	 * during rapid changes (e.g. checkout, rebase).
+	 * Default quiet period (ms) after the last detected change before the
+	 * callback fires. A burst of filesystem activity — checkout, rebase, mass
+	 * save — therefore produces one refresh instead of one per file.
 	 */
-	private static final long DEBOUNCE_MILLIS = 500;
-
-	// -------------------------------------------------------------------------
-	// Fields
-	// -------------------------------------------------------------------------
-
-	/** The repository whose working tree is being watched */
-	private final GitDir GitDirTarget;
-
-	/** Callback fired (on the debounce timer thread) when file changes are detected */
-	private final Runnable OnChange;
-
-	/** OS-level watch service; null until {@link #Start()} is called */
-	private volatile WatchService WatchServiceInstance;
+	protected static final long DEFAULT_DEBOUNCE_MILLIS = 500;
 
 	/**
-	 * Every registered directory mapped to its {@link WatchKey}.
-	 * Used to cancel individual keys on directory deletion and to find
-	 * child keys for cascading cleanup. Only accessed from the watch-loop
-	 * thread (single-threaded), so a plain {@link HashMap} suffices.
+	 * Create a stopped watcher. No resources are acquired here: nothing is
+	 * watched, no thread exists, and the callback cannot fire until
+	 * {@link #Start()} is called.
+	 *
+	 * @param _GitDirTarget the repository to watch; may be null, and its root is
+	 *                      read through {@link #GetWatchedRoot()} at
+	 *                      {@link #Start()} time rather than here, so a
+	 *                      session-restored {@link GitDir} whose path is filled
+	 *                      in after construction still works
+	 * @param _OnChange     callback fired when changes are detected; may be null,
+	 *                      in which case notifications are discarded
 	 */
-	private final Map<Path, WatchKey> RegisteredDirs = new HashMap<>();
-
-	/** Single-threaded timer for debouncing rapid filesystem events */
-	private final ScheduledExecutorService DebounceTimer =
-		Executors.newSingleThreadScheduledExecutor(__R ->
-		{
-			Thread __T = new Thread(__R, "GitWatcher-debounce");
-			__T.setDaemon(true);
-			return __T;
-		});
-
-	/** Handle to the currently pending debounced callback; non-null while a debounce window is active */
-	private volatile ScheduledFuture<?> PendingDebounce;
-
-	// -------------------------------------------------------------------------
-	// Construction
-	// -------------------------------------------------------------------------
-
-	/**
-	 * @param _GitDirTarget the repository to watch (root path resolved at {@link #Start()} time)
-	 * @param _OnChange     callback fired when file changes are detected (debounced)
-	 */
-	public GitWatcher(GitDir _GitDirTarget, Runnable _OnChange)
+	protected GitWatcher(GitDir _GitDirTarget, Runnable _OnChange)
 	{
 		GitDirTarget = _GitDirTarget;
 		OnChange = _OnChange;
 	}
 
+	/** The repository this watcher reports changes for */
+	private final GitDir GitDirTarget;
+
+	/** Consumer notified by {@link #FireChange()}; null-tolerant */
+	private final Runnable OnChange;
+
+	/** Debounce scheduler; null while stopped (or before the first {@link #Start()}) */
+	private volatile ScheduledExecutorService DebounceTimer;
+
+	/**
+	 * The pending debounced notification, if a debounce window is open. Volatile
+	 * because the debounce task clears it on its own thread while callers may
+	 * cancel it.
+	 */
+	private volatile ScheduledFuture<?> PendingDebounce;
+
 	// -------------------------------------------------------------------------
-	// Public API
+	// Lifecycle
 	// -------------------------------------------------------------------------
 
 	/**
-	 * @return the {@link GitDir} this watcher is monitoring
+	 * Begin observing the repository. Acquires the mechanism's resources and
+	 * returns promptly; long-running setup (a recursive directory walk, for
+	 * instance) and the detection loop itself belong on the subclass's own thread
+	 * so the caller is never blocked.
+	 * <p>
+	 * No-op when the mechanism cannot watch the repository (invalid or missing
+	 * root, disabled by a setting) — implementations must not throw in that case,
+	 * and {@link #IsRunning()} then stays false.
+	 */
+	public abstract void Start();
+
+	/**
+	 * Stop observing and release every resource. Idempotent and callable from any
+	 * thread, including on a watcher that never started; after it returns, no
+	 * further change notification may be delivered. Implementations that debounce
+	 * must call {@link #CloseDebounceTimer()} here so a pending window cannot fire
+	 * a stale change.
+	 */
+	public abstract void Stop();
+
+	/**
+	 * @return true if the watcher is currently observing the repository, derived
+	 *         from live mechanism state (not a flag that can drift out of sync, so
+	 *         a watcher that lost its directory reports false without an explicit
+	 *         {@link #Stop()})
+	 */
+	public abstract boolean IsRunning();
+
+	// -------------------------------------------------------------------------
+	// Shared state
+	// -------------------------------------------------------------------------
+
+	/**
+	 * @return the {@link GitDir} this watcher reports changes for, or null when it
+	 *         was constructed without a target
 	 */
 	public GitDir GetGitDirTarget()
 	{
@@ -100,285 +135,126 @@ public class GitWatcher
 	}
 
 	/**
-	 * Start watching the directory tree. Resolves the root path from the
-	 * {@link GitDir} at call time (not construction time), so session-restored
-	 * repositories whose path is set after construction are handled correctly.
-	 * <p>
-	 * Registers the root directory immediately, then recursively registers all
-	 * existing subdirectories on a daemon virtual thread so the calling thread
-	 * is never blocked. The watch loop blocks on {@link WatchService#take()}
-	 * on that same thread.
-	 * <p>
-	 * No-op if the root path does not exist or is not a directory.
-	 */
-	public void Start()
-	{
-		Path __RootPath = GitDirTarget.GetRepoRootPath();
-		if (__RootPath == null || !Files.isDirectory(__RootPath))
-			return;
-
-		try
-		{
-			WatchServiceInstance = FileSystems.getDefault().newWatchService();
-			WatchKey __RootKey = __RootPath.register(WatchServiceInstance,
-				StandardWatchEventKinds.ENTRY_CREATE,
-				StandardWatchEventKinds.ENTRY_DELETE,
-				StandardWatchEventKinds.ENTRY_MODIFY);
-			RegisteredDirs.put(__RootPath, __RootKey);
-
-			// Recursive registration + watch loop run on a single daemon virtual thread.
-			// RegisterRecursive walks the tree (potentially slow for large repos) but
-			// never touches the calling thread.
-			Thread.startVirtualThread(() ->
-			{
-				RegisterRecursive(__RootPath);
-				WatchLoop();
-			});
-		}
-		catch (IOException __Ex)
-		{
-			System.err.println("GitWatcher: failed to start for " + __RootPath + ": " + __Ex.getMessage());
-		}
-	}
-
-	/**
-	 * Stop watching and release all OS resources. Safe to call multiple times
-	 * and from any thread. The debounce timer is shut down immediately;
-	 * the {@link WatchService} close runs on a background thread to avoid
-	 * blocking the caller while the OS tears down notification handles.
-	 */
-	public void Stop()
-	{
-		DebounceTimer.shutdownNow();
-		RegisteredDirs.clear();
-
-		// Close the WatchService off the calling thread — on Windows this
-		// calls FindCloseChangeNotification for every registered directory,
-		// which can be slow for large trees.
-		WatchService __Service = WatchServiceInstance;
-		if (__Service != null)
-		{
-			Thread.startVirtualThread(() ->
-			{
-				try { __Service.close(); }
-				catch (IOException __Ex) { /* best-effort cleanup */ }
-			});
-		}
-	}
-
-	/**
-	 * @return true if this watcher has been started and not yet stopped
-	 */
-	public boolean IsRunning()
-	{
-		return WatchServiceInstance != null && !RegisteredDirs.isEmpty();
-	}
-
-	// -------------------------------------------------------------------------
-	// Watch loop
-	// -------------------------------------------------------------------------
-
-	/**
-	 * Blocking loop that processes {@link WatchKey} signals. Dispatches events
-	 * to folder bookkeeping (register/unregister) or file-change refresh
-	 * (debounced callback). Exits when the watch service is closed, all keys
-	 * are cancelled, or the thread is interrupted.
-	 */
-	private void WatchLoop()
-	{
-		try
-		{
-			while (true)
-			{
-				WatchKey __Key;
-				try
-				{
-					__Key = WatchServiceInstance.take();
-				}
-				catch (InterruptedException __Ex)
-				{
-					Thread.currentThread().interrupt();
-					return;
-				}
-				catch (ClosedWatchServiceException __Ex)
-				{
-					return;
-				}
-
-				for (WatchEvent<?> __Event : __Key.pollEvents())
-				{
-					WatchEvent.Kind<?> __Kind = __Event.kind();
-					if (__Kind == StandardWatchEventKinds.OVERFLOW)
-						continue;
-
-					@SuppressWarnings("unchecked")
-					WatchEvent<Path> __PathEvent = (WatchEvent<Path>) __Event;
-					Path __FileName = __PathEvent.context();
-
-					// Ignore changes inside .git (staging, ref updates, etc.)
-					if (__FileName != null && __FileName.toString().equals(GIT_DIR_NAME))
-						continue;
-
-					Path __ParentDir = (Path) __Key.watchable();
-					Path __Resolved = __ParentDir.resolve(__FileName);
-
-					if (__Kind == StandardWatchEventKinds.ENTRY_CREATE && Files.isDirectory(__Resolved))
-					{
-						// Folder added → register only, no refresh
-						RegisterDirectory(__Resolved);
-					}
-					else if (__Kind == StandardWatchEventKinds.ENTRY_DELETE && RegisteredDirs.containsKey(__Resolved))
-					{
-						// Folder removed → cancel this key + all children, remove from map
-						UnregisterDirectory(__Resolved);
-					}
-					else
-					{
-						// File created / modified / deleted → trigger refresh
-						ScheduleDebouncedCallback();
-					}
-				}
-
-				boolean __Valid = __Key.reset();
-				if (!__Valid)
-				{
-					// This key's directory was deleted or moved.
-					// Remove from map and clean up any children.
-					Path __DeletedPath = null;
-					for (var __Entry : RegisteredDirs.entrySet())
-					{
-						if (__Entry.getValue() == __Key)
-						{
-							__DeletedPath = __Entry.getKey();
-							break;
-						}
-					}
-					if (__DeletedPath != null)
-						UnregisterDirectory(__DeletedPath);
-
-					// If no directories remain, stop watching.
-					if (RegisteredDirs.isEmpty())
-						return;
-				}
-			}
-		}
-		catch (Exception __Ex)
-		{
-			__Ex.printStackTrace();
-		}
-	}
-
-	// -------------------------------------------------------------------------
-	// Directory registration
-	// -------------------------------------------------------------------------
-
-	/**
-	 * Register a single directory with the watch service and track it in
-	 * {@link #RegisteredDirs}. Each directory gets its own {@link WatchKey}
-	 * that monitors CREATE, DELETE, and MODIFY events.
-	 * Duplicate registrations are skipped.
-	 */
-	private void RegisterDirectory(Path _Dir)
-	{
-		if (RegisteredDirs.containsKey(_Dir))
-			return;
-
-		try
-		{
-			WatchKey __Key = _Dir.register(WatchServiceInstance,
-				StandardWatchEventKinds.ENTRY_CREATE,
-				StandardWatchEventKinds.ENTRY_DELETE,
-				StandardWatchEventKinds.ENTRY_MODIFY);
-			RegisteredDirs.put(_Dir, __Key);
-		}
-		catch (IOException __Ex)
-		{
-			// Directory may have been deleted between discovery and registration.
-		}
-	}
-
-	/**
-	 * Unregister a directory and all its children from the watch service.
-	 * Cancels each {@link WatchKey} (releasing the OS handle) and removes
-	 * the entries from {@link #RegisteredDirs}. Children are found by
-	 * prefix matching against the deleted path.
+	 * Resolve the working-tree root to observe. Re-read on every call instead of
+	 * cached, because a session-restored {@link GitDir} may still have no path when
+	 * the watcher is constructed.
 	 *
-	 * @param _DirPath the directory that was deleted
+	 * @return the working-tree root, or null when there is no {@link GitDir} target
+	 *         or its path has no parent — note that a target whose path is still
+	 *         unset reports {@link GitDir#GetRepoRootPath()}'s empty path, so the
+	 *         result is not necessarily an existing directory and callers must
+	 *         validate it before watching
 	 */
-	private void UnregisterDirectory(Path _DirPath)
+	protected final Path GetWatchedRoot()
 	{
-		// Cancel the key for the deleted directory itself.
-		WatchKey __Key = RegisteredDirs.remove(_DirPath);
-		if (__Key != null)
-			__Key.cancel();
-
-		// Cancel keys for any child directories (cascading deletion).
-		// Collect first to avoid ConcurrentModificationException.
-		var __Children = RegisteredDirs.keySet().stream()
-			.filter(__P -> __P.startsWith(_DirPath))
-			.toList();
-
-		for (var __Child : __Children)
-		{
-			WatchKey __ChildKey = RegisteredDirs.remove(__Child);
-			if (__ChildKey != null)
-				__ChildKey.cancel();
-		}
+		return GitDirTarget == null ? null : GitDirTarget.GetRepoRootPath();
 	}
 
 	// -------------------------------------------------------------------------
-	// Recursive directory registration
+	// Change notification
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Walk the directory tree from the given root and register every subdirectory
-	 * that is not inside {@code .git}. Directories created after this walk
-	 * completes are picked up by the {@code ENTRY_CREATE} handler in the
-	 * watch loop.
+	 * Notify the consumer immediately, on the calling thread. Used by mechanisms
+	 * that already coalesce their own events; no-op when no callback was supplied.
 	 */
-	private void RegisterRecursive(Path _Root)
+	protected final void FireChange()
 	{
-		try (var __Walker = Files.walk(_Root))
-		{
-			__Walker.filter(__P -> Files.isDirectory(__P) && !__P.equals(_Root))
-				.filter(__P -> !IsInsideGitDir(__P, _Root))
-				.forEach(this::RegisterDirectory);
-		}
-		catch (IOException __Ex)
-		{
-			// Best-effort: some directories may have been deleted during the walk.
-		}
+		Runnable __OnChange = OnChange;
+		if (__OnChange != null)
+			__OnChange.run();
 	}
 
 	/**
-	 * @return true if the given path is inside a {@code .git} directory
+	 * Trailing-edge debounce: (re)schedule the change callback
+	 * {@link #DEFAULT_DEBOUNCE_MILLIS} after the last detected change, so a burst
+	 * yields one notification.
+	 * <p>
+	 * No-op until {@link #OpenDebounceTimer()} has been called, and after
+	 * {@link #CloseDebounceTimer()}.
 	 */
-	private static boolean IsInsideGitDir(Path _Path, Path _RepoRoot)
+	protected final void ScheduleChange()
 	{
-		Path __Relative = _RepoRoot.relativize(_Path);
-		for (Path __Segment : __Relative)
-		{
-			if (__Segment.toString().equals(GIT_DIR_NAME))
-				return true;
-		}
-		return false;
+		ScheduleChange(DEFAULT_DEBOUNCE_MILLIS);
 	}
 
-	// -------------------------------------------------------------------------
-	// Debounced callback
-	// -------------------------------------------------------------------------
+	/**
+	 * Trailing-edge debounce with an explicit quiet period: cancels the previous
+	 * pending notification and schedules a new one, so only the last event of a
+	 * burst reaches the callback.
+	 * <p>
+	 * Safe to call from any thread and as often as events arrive; the callback
+	 * runs on the shared {@code GitWatcher-debounce} daemon, never on the caller's
+	 * thread. No-op when no debounce timer is open, so a mechanism that debounces
+	 * must open it in {@link #Start()}; it is not synchronized against
+	 * {@link #CloseDebounceTimer()}, so a mechanism must stop reporting once it has
+	 * been stopped rather than racing {@link #Stop()}.
+	 *
+	 * @param _DelayMillis quiet period in milliseconds before the callback runs
+	 */
+	protected final void ScheduleChange(long _DelayMillis)
+	{
+		ScheduledExecutorService __Timer = DebounceTimer;
+		if (__Timer == null)
+			return;
+
+		CancelScheduledChange();
+		PendingDebounce = __Timer.schedule(() ->
+		{
+			PendingDebounce = null;
+			FireChange();
+		}, _DelayMillis, TimeUnit.MILLISECONDS);
+	}
 
 	/**
-	 * Schedule or reschedule a debounced callback. Each new filesystem event
-	 * resets the timer so rapid bursts produce a single invocation of
-	 * {@link #OnChange}.
+	 * Drop the pending debounced notification, if any. A callback that has already
+	 * started running is not interrupted. Called by {@link #CloseDebounceTimer()}
+	 * so a stop cannot deliver a stale change.
 	 */
-	private void ScheduleDebouncedCallback()
+	protected final void CancelScheduledChange()
 	{
-		ScheduledFuture<?> __Old = PendingDebounce;
-		if (__Old != null)
-			__Old.cancel(false);
+		ScheduledFuture<?> __Pending = PendingDebounce;
+		PendingDebounce = null;
+		if (__Pending != null)
+			__Pending.cancel(false);
+	}
 
-		PendingDebounce = DebounceTimer.schedule(OnChange, DEBOUNCE_MILLIS, TimeUnit.MILLISECONDS);
+	/**
+	 * Open the shared debounce timer on first use; later calls are no-ops, so it is
+	 * safe to call at the top of every {@link #Start()}. Mechanisms that use
+	 * {@link #ScheduleChange()} must call this once from {@link #Start()} — a
+	 * watcher that is constructed but never started therefore costs no thread.
+	 * <p>
+	 * Deliberately not synchronized: call it from the lifecycle path, not from the
+	 * per-event hot path.
+	 */
+	protected final void OpenDebounceTimer()
+	{
+		if (DebounceTimer != null)
+			return;
+
+		DebounceTimer = Executors.newSingleThreadScheduledExecutor(__R ->
+		{
+			Thread __T = new Thread(__R, DEBOUNCE_THREAD_NAME);
+			__T.setDaemon(true);
+			return __T;
+		});
+	}
+
+	/**
+	 * Cancel any pending notification and shut the debounce timer down; safe to
+	 * call when no timer was ever opened, and callable more than once (the
+	 * reference is cleared, so a later {@link #ScheduleChange()} is a no-op). Call
+	 * from {@link #Stop()} so the daemon thread and its queue are released and the
+	 * timer can be reopened by a subsequent {@link #Start()}.
+	 */
+	protected final void CloseDebounceTimer()
+	{
+		CancelScheduledChange();
+
+		ScheduledExecutorService __Timer = DebounceTimer;
+		DebounceTimer = null;
+		if (__Timer != null)
+			__Timer.shutdownNow();
 	}
 }
