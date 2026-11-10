@@ -186,7 +186,7 @@ Items that were discussed and have been committed to `master`.
 - [x] **Comment and formatting cleanup** — `AlphaEngine` single-line Javadoc comments expanded to
       multi-line format; `ChangesWidget` `ChangeEntryWidget` indentation fixed, debug `Log` calls
       removed; no functional changes
-- [x] **Filesystem watcher + scan-mtime pipeline** — `GitWatcher` monitors the working tree via
+- [x] **Filesystem watcher + scan-mtime pipeline** — `GW_WatchService` monitors the working tree via
       recursive `WatchService` (`.git` skipped, 500 ms debounce) and triggers a debounced refresh;
       watcher lifecycle wired to tab open/close; `ScannedModified` field added to `CacheEntry`
       (mutable class with `ICacheEntry` interface), captured per porcelain entry via
@@ -284,6 +284,20 @@ Items that were discussed and have been committed to `master`.
       entry; the event fires once per slot crossing, so the list reorder runs inline while the
       session write is debounced by a 250 ms `PauseTransition` (`TAB_ORDER_SAVE_DELAY_MS`) — one write
       per settled gesture (`db3fe49`)
+- [x] **Watcher abstraction + git-polling mechanism** — the `WatchService` watcher was renamed
+      `GW_WatchService` and its mechanism-independent half (watched `GitDir`, change callback,
+      `Start`/`Stop`/`IsRunning` contract, shared trailing-edge debounce) lifted into an abstract
+      `GitWatcher` base; new `GW_GitPoll` mechanism fingerprints the `git status --porcelain` output
+      plus the `HEAD` file each tick and reports a change when it differs, so no OS directory handle
+      is held and a project folder is never left delete-pending (`-uno` fast ticks, `-uall` every
+      fifth, `GIT_OPTIONAL_LOCKS=0`, interval/opt-out by system property). `GitDir` binds it and
+      replaces `StartWatching`/`StopWatching` with the repository lifecycle hooks `OnOpen`/`OnClose`:
+      the watcher is created lazily on the first open and re-armed on later ones, and `AlphaEngine` /
+      `GitDirTabButton` drive open/close work through that one pair (`1fb6a6a`)
+- [x] **Themed large-file prompt button** — `TextViewerWidget`'s large-file guard prompt builds its
+      "Load file" action as an `AButton` with `EButtonVariant.CONFIRM` instead of a plain JavaFX
+      `Button`, so the last unthemed control picks up the palette skin and re-bakes on palette
+      switches (`3f1c532`)
 
 ### Implemented, awaiting commit
 
@@ -356,8 +370,11 @@ Features/plans that are missing and have not been discussed yet. Pick items in f
       but there is still no `git log` parsing or DAG rendering; the scaffold's file list stays
       empty until a commit selection is wired to populate it, and the shared right-column diff
       viewer will show the selected commit's file diffs
-- [ ] **Settings for refresh behavior** — auto-refresh frequency / toggle (currently refresh is
-      event-driven only)
+- [ ] **Settings for refresh behavior** — the refresh *mechanism* is delivered (`GW_GitPoll` polls
+      `git status` every `-Dgitalpha.poll.intervalMillis` ms, `-Dgitalpha.poll.enabled=false` opts
+      out), but both knobs are JVM system properties read once at class initialization: there is no
+      settings UI and no persisted setting. Done = an interval/enable control in the settings surface
+      that feeds the active watcher without a restart
 
 ### App shell / UI
 
