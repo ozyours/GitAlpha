@@ -3,16 +3,17 @@ package com.gitalpha.UI.GitDirProjectManager;
 import com.gitalpha.Engine.Debug;
 import com.gitalpha.Engine.GitDir;
 import com.gitalpha.Engine.GitDirContainer.IScannedFilesUpdatedEvent;
+import com.atlasui.Type.EButtonVariant;
 import com.atlasui.Type.ETextVariant;
 import com.gitalpha.Type.FileChange;
 import com.atlasui.Theme.IThemeChangeEvent;
 import com.atlasui.Theme.ThemeManager;
+import com.atlasui.UI.Components.AButton;
 import com.atlasui.UI.Components.AText;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Button;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
@@ -42,8 +43,10 @@ import java.util.regex.Pattern;
  * <p>
  * Theming: the stats header (added/removed counts) and the overlay messages
  * (loading / guard / large-file prompt / error) are {@link AText} nodes themed
- * via {@link ETextVariant}, so they re-theme on palette switches. The diff text
- * itself uses a fixed {@link #MONO_FONT} via CSS and stays plain-styled.
+ * via {@link ETextVariant}, so they re-theme on palette switches; the
+ * large-file prompt's "Load file" action is an {@link AButton} for the same
+ * reason. The diff text itself uses a fixed {@link #MONO_FONT} via CSS and
+ * stays plain-styled.
  */
 public class TextViewerWidget extends BaseWidget
 {
@@ -467,7 +470,7 @@ public class TextViewerWidget extends BaseWidget
 	/**
 	 * Loads and displays the diff for the given file change: shows a
 	 * "Loading..." indicator, then replaces it with the rendered diff, a
-	 * large-file prompt (with an explicit "Load file" button), a binary-file
+	 * large-file prompt (with an explicit themed "Load file" button), a binary-file
 	 * message, or an error message. Stale responses (for a superseded target)
 	 * are dropped. A {@code null} target clears the viewport (see
 	 * {@link #ClearDiffView}) and hides the overlay.
@@ -642,8 +645,20 @@ public class TextViewerWidget extends BaseWidget
 	}
 
 	/**
-	 * Shows the large-file prompt: an explanation plus a "Load file" button that
-	 * force-loads the diff (explicit user action). Binary files never reach this.
+	 * Shows the large-file prompt: an explanation plus a themed "Load file"
+	 * button ({@link EButtonVariant#CONFIRM} — loading the file is the
+	 * affirmative action here, and CONFIRM renders it on the palette's accent
+	 * color) that force-loads the diff on explicit user action.
+	 * <p>
+	 * The button is an {@link AButton}, not a plain JavaFX {@code Button}, so it
+	 * carries the palette-baked skin and re-bakes on palette switches like every
+	 * other button in the app; {@code AButton} subscribes itself to
+	 * {@link IThemeChangeEvent}, so no listener is registered here. It disables
+	 * itself before the forced load starts so a second click cannot queue a
+	 * duplicate read. Only the large-file guard is bypassed this way — files the
+	 * binary guard rejected never reach this prompt.
+	 * <p>
+	 * <strong>Must be called on the JavaFX Application Thread.</strong>
 	 */
 	private void RenderLargeFilePrompt(FileChange _Target)
 	{
@@ -651,7 +666,7 @@ public class TextViewerWidget extends BaseWidget
 		messageText.setTextAlignment(TextAlignment.CENTER);
 		messageText.setWrappingWidth(400);
 
-		Button loadButton = new Button("Load file");
+		AButton loadButton = new AButton("Load file", EButtonVariant.CONFIRM);
 		loadButton.setOnAction(__Event ->
 		{
 			loadButton.setDisable(true);
